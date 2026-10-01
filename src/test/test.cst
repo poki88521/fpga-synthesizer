@@ -1,0 +1,17 @@
+// 时钟
+IO_LOC "clk" V22;
+IO_PORT "clk" IO_TYPE=LVCMOS33 PULL_MODE=UP;
+
+// PT8211
+IO_LOC "bclk"  E22;
+IO_PORT "bclk"  IO_TYPE=LVCMOS33 DRIVE=8;
+IO_LOC "lrck"  F24;
+IO_PORT "lrck"  IO_TYPE=LVCMOS33 DRIVE=8;
+IO_LOC "din"   G24;
+IO_PORT "din"   IO_TYPE=LVCMOS33 DRIVE=8;
+IO_LOC "pa_en" H17;
+IO_PORT "pa_en" IO_TYPE=LVCMOS33 DRIVE=8;
+
+// LED（选一个板载 LED 的实际引脚填这里）
+//IO_LOC "led"   xxx;
+//IO_PORT "led"  IO_TYPE=LVCMOS33 DRIVE=8;
