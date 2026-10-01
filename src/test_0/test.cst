@@ -1,0 +1,34 @@
+// ============================================================
+//  Physical Constraints for PT8211 Audio Test
+//  Target: GW5AST-LV138FPG676A (Tang Mega 138K Pro)
+// ============================================================
+
+// 时钟输入: 50 MHz 板载晶振
+IO_LOC "clk" V22;
+IO_PORT "clk" IO_TYPE=LVCMOS33 PULL_MODE=UP;
+
+// PT8211 DAC 接口
+IO_LOC "bclk" E22;
+IO_PORT "bclk" IO_TYPE=LVCMOS33 DRIVE=8;
+
+IO_LOC "lrck" F24;
+IO_PORT "lrck" IO_TYPE=LVCMOS33 DRIVE=8;
+
+IO_LOC "din" G24;
+IO_PORT "din" IO_TYPE=LVCMOS33 DRIVE=8;
+
+// 功率放大器使能
+IO_LOC "pa_en" H17;
+IO_PORT "pa_en" IO_TYPE=LVCMOS33 DRIVE=8;
+
+// LED (根据实际板卡调整引脚)
+IO_LOC "led" T3;
+IO_PORT "led" IO_TYPE=LVCMOS33 DRIVE=8;
+
+// ============================================================
+// 时钟资源约束: 将 clk 网络分配到全局时钟缓冲
+// 解决 PR1014 警告。
+// 注意: 网络名 'clk_c' 是综合后工具自动生成的内部网络名，
+// 请在 FloorPlanner 中确认实际名称后替换。
+// ============================================================
+// CLOCK_LOC "clk_c" BUFG = CLK;
