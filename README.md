@@ -12,6 +12,8 @@ fpga-synthesizer/
 ├── drawio/               架构图
 │   └── fpga内部架构.drawio
 ├── src/                  Verilog 源码
+├── demo/                 各模块的仿真 demo（跑仿真 → 导出音频试听）
+│   └── demoForMixedPart/ 模块三（通道 + 全局处理层）全链仿真 demo
 ├── wave_table/           波表文件及有关python程序
 ├── material/             相关资料（开发板原理图等，不纳入版本管理）
 └── scratch/              草稿（不纳入版本管理）

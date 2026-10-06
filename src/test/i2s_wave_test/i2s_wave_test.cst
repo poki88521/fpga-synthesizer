@@ -1,0 +1,45 @@
+// [2026-10-06 12:00]  本文件时间戳（用于校验是否被外部覆盖）
+//=============================================================
+//  i2s_wave_test —— 物理约束（T-1：I2S 波形实测）
+//  板卡：Tang Mega 138K Pro (GW5AST-LV138FPG676A, FCPBG676A)
+//=============================================================
+
+// ---------- 时钟 ----------
+IO_LOC "clk" P16;
+IO_PORT "clk" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+
+// ---------- PT8211 DAC 接口 ----------
+IO_LOC "bclk"  E22;                              // BANK5
+IO_PORT "bclk"  IO_TYPE=LVCMOS33 DRIVE=12;
+
+IO_LOC "lrck"  F24;                              // BANK4
+IO_PORT "lrck"  IO_TYPE=LVCMOS33 DRIVE=12;
+
+IO_LOC "din"   G24;                              // BANK4
+IO_PORT "din"   IO_TYPE=LVCMOS33 DRIVE=12;
+
+IO_LOC "pa_en" H17;                              // BANK5（Pro 板高电平有效）
+IO_PORT "pa_en" IO_TYPE=LVCMOS33 DRIVE=12;
+
+// ---------- PMOD2 复制输出（示波器测点） ----------
+IO_LOC "m_bclk" C21;     // PMOD2_IO0  1.5625 MHz
+IO_PORT "m_bclk" IO_TYPE=LVCMOS33 DRIVE=8;
+
+IO_LOC "m_lrck" B20;     // PMOD2_IO1  48.83 kHz
+IO_PORT "m_lrck" IO_TYPE=LVCMOS33 DRIVE=8;
+
+IO_LOC "m_din"  B19;     // PMOD2_IO2  din
+IO_PORT "m_din"  IO_TYPE=LVCMOS33 DRIVE=8;
+
+IO_LOC "m_slow" A17;     // PMOD2_IO3  lrck÷2048 ≈ 23.8 Hz
+IO_PORT "m_slow" IO_TYPE=LVCMOS33 DRIVE=8;
+
+// ---------- LED（低电平点亮） ----------
+IO_LOC "led_clk"  M25;   // USR_LED.3
+IO_PORT "led_clk"  IO_TYPE=LVCMOS33 DRIVE=8;
+
+IO_LOC "led_lrck" L20;   // USR_LED.2
+IO_PORT "led_lrck" IO_TYPE=LVCMOS33 DRIVE=8;
+
+IO_LOC "led_bclk" R26;   // USR_LED.1
+IO_PORT "led_bclk" IO_TYPE=LVCMOS33 DRIVE=8;
