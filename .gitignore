@@ -3,3 +3,6 @@
 material/
 # drawio temp file
 *.bkp
+
+# 输出文件夹
+out/
