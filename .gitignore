@@ -1,8 +1,14 @@
-
+# 编辑器
 .obsidian/
-material/
-# drawio temp file
+
+# drawio 临时文件
 *.bkp
 
-# 输出文件夹
+# 厂商资料与本地素材（不纳入版本管理）
+material/
+
+# 权限修复工具的备份残留
+.acl-recovery/
+
+# 生成物输出目录（仿真、波表转换、EDA 工程）
 out/
