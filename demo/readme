@@ -1,1 +1,2 @@
-all project demos are placed in this folder
+各模块 demo 的成品与说明放这里（试听用）。
+跑仿真、testbench 与编译脚本在 sim/ 下，见 sim/README.md。
