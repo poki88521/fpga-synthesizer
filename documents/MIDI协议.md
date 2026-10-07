@@ -70,6 +70,7 @@ MIDI 是一种串行通信协议，用于在电子乐器与计算机之间传输
 | 通道状态字节（`0x80`–`0xEF`） | **替换**为新状态，继续有效 |
 | System Common / SysEx（`0xF0`–`0xF7`） | **清除**，之后必须重新出现完整状态字节 |
 | System Real-Time（`0xF8`–`0xFE`） | **不影响**，保持原状态 |
+| System Reset（`0xFF`） | **清除**（并把解析器复位回 IDLE）—— 注意 `0xFF` **不在** `0xF8`–`0xFE` 范围内，不能按实时字节旁路 |
 | 数据字节（`0x00`–`0x7F`） | 按当前状态解析 |
 
 **两个实现要点：**
@@ -216,7 +217,7 @@ Bn  CC号  值
 | Roland GS | Delay Send Level（延迟发送量） |
 | Yamaha XG | Variation Effect Send Level |
 
-> 本项目需要延迟发送量，**拟沿用 GS 惯例使用 CC94，并在实现中写明该约定**。
+> 本项目需要延迟发送量，**定稿沿用 GS 惯例使用 CC94（Delay Send Level）** —— 落点见 `硬件实现.md` §三.六.5 与通道表 `send_delay`。
 
 #### 复位（CC121）
 CC121（Reset All Controllers）用于把控制器恢复到默认值。
@@ -281,10 +282,13 @@ CC 32–63  = LSB（低位 / 细调）
 **（1）RPN / NRPN（CC 98–101 + CC6）**
 用 CC98–101 选择参数号，再用 CC6 赋值：
 
+> ⚠ 下列字节**均按十六进制**书写：`65h` = 十进制 101 = RPN MSB（CC101）、`64h` = 100 = RPN LSB（CC100）、`06h` = 6 = Data Entry MSB（CC6）。
+> 若误按十进制取 CC 号会得到**相反**的语义（CC65 = Portamento On/Off），RTL 实现时务必按十六进制。
+
 ```
-Bn 65 00   Bn 64 00   Bn 06 vv
-   ↑CC101      ↑CC100     ↑CC6
-   RPN MSB     RPN LSB     数据
+Bnh 65h 00h   Bnh 64h 00h   Bnh 06h vv
+     ↑CC101        ↑CC100        ↑CC6
+     RPN MSB       RPN LSB       数据
 ```
 
 常用 RPN：
@@ -301,7 +305,7 @@ Bn 65 00   Bn 64 00   Bn 06 vv
 > GM2 另有一组 NRPN 用于音源编辑（鼓件音高、滤波、包络等），**尚未逐条核实**，需要时再查规范原文。
 
 **（2）通道模式消息（CC 120–127）**
-All Sound Off / Reset All Controllers / All Notes Off / Omni / Mono / Poly 等。**本项目是否实现尚未确定。**
+All Sound Off / Reset All Controllers / All Notes Off / Omni / Mono / Poly 等。**本项目实现 120（All Sound Off）/ 121（Reset All Controllers）/ 123（All Notes Off），其余忽略**——落点与"CC121 不复位的 7 项"见 `硬件实现.md` §三.六.5。
 
 **（3）GS / XG 厂商扩展**
 Roland GS 与 Yamaha XG 对部分 CC（92、94 等）的定义与 GM 不同。**本项目默认不实现厂商扩展。**
