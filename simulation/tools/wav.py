@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""把 sim/out/demo.txt（每行 "左 右" 两个 16-bit 有符号整数）转成 WAV。
+"""把 simulation/out/demo.txt（每行 "左 右" 两个 16-bit 有符号整数）转成 WAV。
 
-用法： python3 sim/wav.py [输入txt] [输出wav] [采样率]
+用法： python3 simulation/tools/wav.py [输入txt] [输出wav] [采样率]
 """
 import sys, struct, wave, os
 
-src = sys.argv[1] if len(sys.argv) > 1 else "sim/out/demo.txt"
-dst = sys.argv[2] if len(sys.argv) > 2 else "sim/out/demo.wav"
+src = sys.argv[1] if len(sys.argv) > 1 else "simulation/out/demo.txt"
+dst = sys.argv[2] if len(sys.argv) > 2 else "simulation/out/demo.wav"
 fs  = int(sys.argv[3]) if len(sys.argv) > 3 else 48828
 
 if not os.path.exists(src):

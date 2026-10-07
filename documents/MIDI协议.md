@@ -32,6 +32,10 @@
 
 ---
 ## 一、简介
+
+> **状态标注约定**：本表「本项目落点」一列中，标 **（暂缓）** 的字段属本期不实现的功能
+> （LFO / 颤音 / FM / 双波表 / 鼓组，详见 `技术文档.md` 附录 B），
+> 其字段已从状态表移出，**RTL 阶段不要按本表去读这些字段**。
 MIDI 是一种串行通信协议，用于在电子乐器与计算机之间传输演奏信息。
 
 它传输的不是声音本身，而是**演奏动作的描述**（按了哪个键、力度多大、踏板是否踩下等）。接收方（音源）根据这些描述实时合成声音。因此同一份 MIDI 数据在不同设备上播放，音色可能不同，但演奏内容完全一致。
@@ -143,7 +147,7 @@ Bn  CC号  值
 | CC | 名称 | 说明 | 本项目落点 |
 |---|---|---|---|
 | [[#音色库选择（CC0 / CC32）\|0]] | Bank Select MSB | 音色库号高 7 位 | 通道表 `bank_msb` |
-| 1 | Modulation Wheel | 调制轮 | 通道表 `mod_wheel` |
+| 1 | Modulation Wheel | 调制轮 | 通道表 `mod_wheel`（**暂缓**，随 LFO） |
 | 2 | Breath Controller | 呼吸控制器 | — |
 | 4 | Foot Controller | 脚踏控制器 | — |
 | 5 | Portamento Time | 滑音时间 | — |
@@ -166,7 +170,7 @@ Bn  CC号  值
 | 72 | Sound Controller 3 | 释音时间 | 通道表 `release_mod` |
 | 73 | Sound Controller 4 | 起音时间 | 通道表 `attack_mod` |
 | 74 | Sound Controller 5 | 亮度 / 截止频率 | 通道表 `filter_cutoff_mod` |
-| 75–79 | Sound Controller 6–10 | Decay / 颤音速率 / 颤音深度 / 颤音延迟 / 音色控制 | 77 关联 `vibrato_depth` |
+| 75–79 | Sound Controller 6–10 | Decay / 颤音速率 / 颤音深度 / 颤音延迟 / 音色控制 | 77 关联 `vibrato_depth`（**暂缓**，随 LFO） |
 | 80–83 | General Purpose Controller 5–8 | 通用控制器 | — |
 | 84 | Portamento Control | 滑音控制 | — |
 | 88 | High Resolution Velocity Prefix | 高清力度前缀（较新规范追加） | — |

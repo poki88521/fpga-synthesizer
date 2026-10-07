@@ -2,31 +2,31 @@
 
 这是「通道处理层 + 全局处理层」（我负责的板块）的全链仿真 demo。
 
-重构后 TB 与脚本都在 `sim/` 下；可试听的成品留在 `demo/demoForMixedPart/`。
+TB 与脚本都在 `simulation/` 下；可试听的成品留在 `demo/demoForMixedPart/`。
 
 ## 文件
 
 | 文件 | 说明 |
 |---|---|
-| `sim/tb/tb_full_chain.v` | 全链 testbench：自建 8 个音符当输入，跑完整条链并导出音频 |
-| `sim/tools/wav.py` | 把仿真导出的文本转成 WAV（**纯演示辅助，和芯片无关**） |
-| `sim/run_demo.sh` | 一键：编译 → 仿真 → 转 WAV |
-| `sim/models/` | 厂商原语仿真模型（`gowin_prim_stub.v` 等），需从 Gowin 安装目录或工作机拷入，不入库 |
-| `sim/out/` | 仿真产物（`demo.txt` / `demo.wav`），生成物，不入库 |
+| `simulation/tb/tb_full_chain.v` | 全链 testbench：自建 8 个音符当输入，跑完整条链并导出音频 |
+| `simulation/tools/wav.py` | 把仿真导出的文本转成 WAV（**纯演示辅助，和芯片无关**） |
+| `simulation/run_demo.sh` | 一键：编译 → 仿真 → 转 WAV |
+| `simulation/models/` | 厂商原语仿真模型（`gowin_prim_stub.v` 等），需从 Gowin 安装目录或工作机拷入，不入库 |
+| `simulation/out/` | 仿真产物（`demo.txt` / `demo.wav`），生成物，不入库 |
 | `demo/demoForMixedPart/out/demo.wav` | 之前入库的试听成品，可以直接播 |
 
-可综合代码在 `rtl/`（按设计四层分子目录），`sim/run_demo.sh` 会递归收集它下面的 `*.v`。
+可综合代码在 `rtl/`（按设计四层分子目录），`simulation/run_demo.sh` 会递归收集它下面的 `*.v`。
 
 ## 怎么跑
 
 ```sh
-sh sim/run_demo.sh
+sh simulation/run_demo.sh
 ```
 
 仿真很慢（约 1 秒音频要跑几分钟），因为链路上每个采样要几百个时钟。
 
 > 注意：TB 是**自定时序**（仿真时钟 50 MHz，一个采样处理完立刻进下一个），
-> 脚本转 WAV 时沿用的采样率是 48828；真机的 48 kHz / 49.152 MHz 口径见 `docs/技术文档.md` §六。
+> 脚本转 WAV 时沿用的采样率是 48828；真机的 48 kHz / 49.152 MHz 口径见 `documents/技术文档.md` §六。
 
 ## 链路
 
@@ -50,7 +50,7 @@ sh sim/run_demo.sh
 
 ## ⚠️ 当前状态（诚实版）
 
-**能用的部分** —— 里程碑 1/2/3，每个都有通过的 testbench（在工作机的 `sim/` 下，**尚未入库**）：
+**能用的部分** —— 里程碑 1/2/3，每个都有通过的 testbench（在工作机的 `simulation/` 下，**尚未入库**）：
 
 ```
 PASS  tb_norm_sat      归一化+饱和，2000 组随机对比参考模型

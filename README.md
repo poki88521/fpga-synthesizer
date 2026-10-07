@@ -1,6 +1,6 @@
 # 基于 FPGA 的实时多音色合成电子乐器引擎
 
-项目具体内容详见[技术文档](docs/技术文档.md)。
+项目具体内容详见[技术文档](documents/技术文档.md)。
 
 ## 目录结构
 
@@ -11,16 +11,16 @@ fpga-synthesizer/
 │   ├── voice/            单声部处理层（DDS + 波表、SVF、ADSR、VCA）
 │   ├── channel/          通道处理层（通道缓存/系数/累加、效果发送总线）
 │   ├── global/           全局处理层（混响/合唱/延迟、主混音、主输出）
-│   ├── sched/            调度层（MIDI 解析、状态表编辑、音色映射、声部分配/时序/取数）
+│   ├── scheduler/        调度层（MIDI 解析、状态表编辑、音色映射、声部分配/时序/取数）
 │   └── top/              顶层与约束（synth_top、PLL/时钟配置、.cst/.sdc）
-├── sim/                  仿真
+├── simulation/           仿真
 │   ├── tb/               testbench（tb_full_chain.v 等）
 │   ├── models/           厂商原语仿真模型（gowin_prim_stub.v 等，不入库）
 │   ├── tools/            wav.py 等仿真辅助脚本
 │   ├── run_demo.sh       一键：编译 → 仿真 → 转 WAV
 │   └── out/              仿真产物（不入库）
 ├── board/                板级外设验证工程，每个 *_test/ 一个 Gowin 工程（.v + .cst + .sdc）
-├── docs/                 设计文档
+├── documents/            设计文档
 │   ├── 技术文档.md         总体设计（架构 / 状态表 / 调度与时序）
 │   ├── 硬件实现.md         时钟复位 / 引脚 / 定点口径 / 波表 ROM
 │   ├── MIDI协议.md         MIDI 协议说明
@@ -46,7 +46,7 @@ fpga-synthesizer/
 
 ```sh
 # 跑模块三全链仿真 demo（需要 iverilog 与 python3）
-sh sim/run_demo.sh
+sh simulation/run_demo.sh
 
 # 重新生成波表 ROM 初始化文件（需要 numpy / soundfile / scipy）
 cd wave_table && python3 convert.py
