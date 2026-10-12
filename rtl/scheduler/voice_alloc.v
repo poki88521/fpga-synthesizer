@@ -48,9 +48,11 @@ module voice_alloc #(
     input  wire [1:0]  cc_action,        // 1=CC120 全音关(直断) 2=CC123 全音符关(走 RELEASE)
     input  wire [3:0]  cc_ch,
 
-    // ——— 通道状态表读口（读 max_voices）———
+    // ——— 通道状态表读口（读 max_voices / bank_msb / program）———
     output reg  [3:0]  ch_rd_addr,
     input  wire [5:0]  ch_max_voices,
+    input  wire [6:0]  ch_bank_msb,      // 同一次读口取回，供 timbre_map
+    input  wire [6:0]  ch_prog_num,      // 音色号 0~127
 
     // ——— note_count 写回通道表 ———
     output reg         nc_wr,
@@ -83,6 +85,38 @@ module voice_alloc #(
     localparam [2:0] S_IDLE = 3'd0, S_SCAN = 3'd1, S_WSCAN = 3'd2,
                      S_DEC  = 3'd3, S_WRITE = 3'd4, S_NC = 3'd5, S_ALLNO = 3'd6;
     localparam [1:0] OP_ALLOC = 2'd0, OP_REL = 2'd1, OP_STEAL = 2'd2;
+
+    //========================================================================
+    // 音色映射（timbre_map）：用**该通道的 program** 决定音色槽
+    //
+    //  ⚠ 2026-10-09 接入。原先 `awr_timbre <= evt_key[2:0]`，即"音色槽 = note 低 3 位"，
+    //     导致 Program Change 完全无效（上板实测：换音色后声音不变）。
+    //
+    //  ⚠ 时序对齐（**关键**）：timbre_map 是 `req` 后**下一拍**输出（它的设计如此，
+    //     为了切断组合长链）。而 `S_DEC` 决定目标声部后，下一拍正好就是 `S_WRITE`，
+    //     所以这里用**组合**的 `tm_req = (st == S_DEC)`：
+    //         S_DEC  那一拍 tm_req 拉高 → timbre_map 采样 bank_msb/prog_num
+    //         S_WRITE 那一拍 tm_slot 有效 → 直接写进 awr_timbre
+    //     若改成"寄存器打一拍"的 tm_req，就会晚一拍、S_WRITE 取到上一轮的旧值。
+    //
+    //  ⚠ ch_prog_num 取自 chan_table 的同一个读口，而 ch_rd_addr 在 S_IDLE 检测到
+    //     ev_note 时就已指向"要分配的那个通道"（见 S_IDLE 的 ch_rd_addr <= ev_note_ch），
+    //     所以 S_DEC 那拍取到的 program 是正确的。
+    //
+    //  ⚠ tm_vld 用不到：tm_req 与 S_WRITE 的相位是固定的，不需要额外握手。
+    //========================================================================
+    wire        tm_req = (st == S_DEC);
+    wire [2:0]  tm_slot;
+
+    timbre_map u_timbre_map (
+        .clk         (clk),
+        .rst_n_sync  (rst_n_sync),
+        .req         (tm_req),
+        .bank_msb    (ch_bank_msb),
+        .prog_num    (ch_prog_num),
+        .timbre_slot (tm_slot),
+        .vld         ()                  // 相位固定，不需要
+    );
 
     //========================================================================
     // 状态 / 声部摘要（本模块即分配类字段的权威副本）
@@ -283,7 +317,7 @@ module voice_alloc #(
                         awr_note    <= evt_key;
                         awr_vel     <= evt_vel;
                         awr_ch      <= evt_ch;
-                        awr_timbre  <= evt_key[2:0];      // 本期恒等（真映射经 timbre_map）
+                        awr_timbre  <= tm_slot;           // 由 timbre_map 依该通道的 program 决定
                         awr_gate    <= (tgt_op == OP_REL) ? 1'b0 : 1'b1;
                         awr_vel_gain<= vel_gain_fn(evt_vel);
                         awr_age     <= age_ctr;

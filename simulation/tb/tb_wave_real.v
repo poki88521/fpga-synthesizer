@@ -99,9 +99,9 @@ module tb_wave_real;
             for (i = 0; i < DEPTH; i = i + 1)
                 u_fetch.u_rom.mem[i] = 16'hDEAD;
 
-            try_path[0] = "wave_table/out/wave_table.hex";       // 仓库根为 cwd
-            try_path[1] = "../wave_table/out/wave_table.hex";    // simulation/ 为 cwd
-            try_path[2] = "../../wave_table/out/wave_table.hex"; // simulation/out/ 为 cwd
+            try_path[0] = "data/wave_table.hex";       // 仓库根为 cwd
+            try_path[1] = "../data/wave_table.hex";    // simulation/ 为 cwd
+            try_path[2] = "../../data/wave_table.hex"; // simulation/out/ 为 cwd
 
             loaded = 0;
             for (i = 0; i < 3; i = i + 1) begin

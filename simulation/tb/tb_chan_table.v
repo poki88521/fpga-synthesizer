@@ -139,8 +139,10 @@ module tb_chan_table;
         #10;
         chk(rd_default_timbre == 8'd3, "default_timbre = 3 (ch5)");
         chk(rd_max_voices     == 6'd8, "max_voices = 8 (ch5)");
-        chk(rd_volume         == 7'd0, "volume = 0");
-        chk(rd_pan            == 7'd0, "pan = 0");
+        // ⚠ 期望值不是 0：sakiko 集成时补了复位默认值（音量 100、声像 64 居中、
+        //    pan_gL/R = 23170），否则通道表复位全 0 会让整链没声音。
+        chk(rd_volume         == 7'd100, "volume = 100（复位默认值）");
+        chk(rd_pan            == 7'd64,  "pan = 64（居中）");
         chk(rd_note_count     == 6'd0, "note_count = 0");
         chk(rd_bend_ratio     == 16'd0, "bend_ratio = 0 (未设过弯音)");
 
@@ -148,13 +150,13 @@ module tb_chan_table;
         $display("== 2. CC write -> submit -> visible ==");
         rd_ch = 4'd2;
         #10;
-        cc(4'd2, 5'd0, 16'd100);                 // volume = 100
+        cc(4'd2, 5'd0, 16'd60);                  // volume = 60（故意取一个与复位默认 100 不同的值）
         cc(4'd2, 5'd2, 16'd64);                  // expression = 64
         #10;
-        chk(rd_volume == 7'd0,   "before submit: volume still old (0)");
+        chk(rd_volume == 7'd100, "before submit: volume 仍是复位默认值 100");
         do_frame;
         #10;
-        chk(rd_volume     == 7'd100, "after submit: volume = 100");
+        chk(rd_volume     == 7'd60,  "after submit: volume = 60");
         chk(rd_expression == 7'd64,  "after submit: expression = 64");
         chk(fifo_empty, "fifo empty after submit");
 
@@ -242,7 +244,7 @@ module tb_chan_table;
         #10;
         chk(prd_volume[0*7 +: 7] == 7'd11, "prd[0].volume = 11");
         chk(prd_volume[1*7 +: 7] == 7'd22, "prd[1].volume = 22");
-        chk(prd_volume[2*7 +: 7] == 7'd100, "prd[2].volume = 100 (前面写的)");
+        chk(prd_volume[2*7 +: 7] == 7'd60,  "prd[2].volume = 60 (前面写的)");
 
         //======================================================== 收尾
         if (errors == 0) $display("PASS  tb_chan_table");

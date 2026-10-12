@@ -35,6 +35,9 @@ module tb_voice_alloc;
 
     wire [3:0] ch_rd_addr;
     reg  [5:0] ch_max_voices = 6'd8;
+    //  ⚠ 2026-10-09：voice_alloc 新增这两个输入（供内部 timbre_map 决定音色槽）
+    reg  [6:0] ch_bank_msb = 7'd0;
+    reg  [6:0] ch_prog_num = 7'd0;
     wire       nc_wr;
     wire [3:0] nc_ch;
     wire [5:0] nc_val;
@@ -60,6 +63,7 @@ module tb_voice_alloc;
         .ev_note_key(ev_note_key), .ev_note_vel(ev_note_vel),
         .cc_action(cc_action), .cc_ch(cc_ch),
         .ch_rd_addr(ch_rd_addr), .ch_max_voices(ch_max_voices),
+        .ch_bank_msb(ch_bank_msb), .ch_prog_num(ch_prog_num),
         .nc_wr(nc_wr), .nc_ch(nc_ch), .nc_val(nc_val),
         .scan_addr(scan_addr), .scan_req(scan_req), .scan_env_state(scan_env_state),
         .awr(awr), .awr_id(awr_id), .awr_note(awr_note), .awr_vel(awr_vel),
@@ -258,6 +262,30 @@ module tb_voice_alloc;
         chk(cap_awr && cap_gate == 1'b0 && cap_fast == 1'b0,
             "CC123 -> gate=0 with normal release (fast=0)");
         drain_evt;
+
+        //======================================================== 7) 音色映射
+        //  ⚠ 2026-10-09 新增。awr_timbre 现在来自 timbre_map（依**该通道的 program**），
+        //     而不是原先的 note[2:0]。上板实测"换音色后声音不变"就是这个原因：
+        //     旧实现下音色槽只跟 note 走，Program Change 完全无效。
+        $display("");
+        $display("== 7) timbre_slot comes from channel program ==");
+        repeat (20) @(posedge clk);
+        ch_prog_num = 7'd5;                       // 通道音色号 = 5
+        note_on(4'd0, 7'd60, 7'd100);             // note 60 的低 3 位 = 4（用于对照）
+        repeat (150) @(posedge clk);              // 等分配跑完（扫描 32 声部约 70 拍）
+        #1;
+        $display("       prog_num=%0d -> awr_timbre=%0d   (若仍取 note[2:0] 会是 4)",
+                 ch_prog_num, awr_timbre);
+        chk(awr_timbre === 3'd5, "awr_timbre = program[2:0] = 5");
+
+        // 换一个音色号，确认真的跟着 program 变
+        repeat (20) @(posedge clk);
+        ch_prog_num = 7'd2;
+        note_on(4'd0, 7'd60, 7'd100);
+        repeat (150) @(posedge clk);
+        #1;
+        $display("       prog_num=%0d -> awr_timbre=%0d", ch_prog_num, awr_timbre);
+        chk(awr_timbre === 3'd2, "换 program 后音色槽跟着变");
 
         if (errors == 0) $display("PASS  tb_voice_alloc");
         else             $display("FAIL  tb_voice_alloc : %0d error(s)", errors);

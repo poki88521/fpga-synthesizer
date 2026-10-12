@@ -149,16 +149,13 @@ module voice_fetch #(
                 aw_q[k]   <= 52'd0;
             end
             scan_env_state <= 3'd0;
+            //  ⚠ 这里**只**复位 pf_vld。整组 pf_* 数据的复位放在下面 `generate g_pf`
+            //     的 per-lane always 里做 —— 两边都写就是"同一信号多处驱动"：
+            //         ERROR (EX2000) Net 'pf_phase_inc[255]' is constantly driven
+            //                        from multiple places
+            //         ERROR (EX1999) Found another driver here
+            //     iverilog 把它们当同一变量的不同位段、宽容放过；Gowin 严格报错。
             pf_vld       <= 1'b0;
-            pf_phase_inc <= {(P*32){1'b0}};
-            pf_timbre    <= {(P*3){1'b0}};
-            pf_note      <= {(P*7){1'b0}};
-            pf_vel_gain  <= {(P*16){1'b0}};
-            pf_vca_gain  <= {(P*16){1'b0}};
-            pf_ch        <= {(P*4){1'b0}};
-            pf_gate      <= {P{1'b0}};
-            pf_fast_rel  <= {P{1'b0}};
-            pf_sust_pedal<= {P{1'b0}};
         end else begin
             pf_vld <= 1'b0;
 
@@ -244,6 +241,44 @@ module voice_fetch #(
         end
     endfunction
 
+    //========================================================================
+    //  音符号 → 相位增量（`技术文档.md` §五.1.4）
+    //
+    //      f_note    = 440 × 2^((note−69)/12)        （A4 = 440 Hz）
+    //      phase_inc = f_note / f_s × 2³²
+    //
+    //  ⚠ **原实现漏了这一步**：`vtab` 里有 `V_PHINC` 字段、`pf_phase_inc` 也把它
+    //     读出去送进 DDS，但**没有任何地方写它** → DDS 增量恒 0 → 完全不发声。
+    //     （集成时实测：分配成功 `pf_gate=1`，但 `pf_phase_inc=0`，`phase_acc` 不动。）
+    //
+    //  ⚠ 本函数**不含 `bend_ratio` 调制**：文档要求
+    //     `phase_inc = (phase_inc_base × bend_ratio) >>> 15`（Q1.15），
+    //     但声部表里目前没有 `bend_ratio` 字段（弯音轮未接）。
+    //     接弯音时在此乘一次即可，**调用点不用改**。
+    //========================================================================
+    // 音符号 → 相位增量**查表**（128 项 × 32 bit，由脚本按公式精确算出）
+    //
+    //  ⚠ 原实现是**实时实数运算**：
+    //        f = 440.0 * $pow(2.0, ($itor(note) - 69.0) / 12.0);
+    //        note2inc = $rtoi(f / 48000.0 * 4294967296.0);
+    //    仿真能跑，但 Gowin **综合不支持 real**：
+    //        ERROR (EX3315) Non-constant system function 'itor' is not supported
+    //        ERROR (EX3861) Synthesis of 'real' values is not supported
+    //    改成查表后与文档公式逐位一致（note=60 → 0x016534C3，与 tb_full_system
+    //    实测的基准值相符）。
+    //
+    //  ⚠ note_inc.hex 必须放在**综合/仿真工作目录下的 data/ 子目录**（与 pan_gl.hex / pan_gr.hex /
+    //    bend_exp.hex 同一处），否则 $readmemh 找不到 → 表全 0 → 又不发声。
+    reg [31:0] inc_tbl [0:127];
+    initial $readmemh("data/note_inc.hex", inc_tbl);
+
+    function [31:0] note2inc;
+        input [6:0]  note;
+        begin
+            note2inc = inc_tbl[note];
+        end
+    endfunction
+
     // 把一条分配写应用到 225 bit 项上（只动分配类字段）
     function [224:0] apply_alloc;
         input [224:0] old;
@@ -257,7 +292,16 @@ module voice_fetch #(
             t[V_TIMBRE :V_TIMBRE_L ] = e[28:26];
             t[V_GATE]                = e[25];
             t[V_VELGAIN:V_VELGAIN_L] = e[24:9];
-            t[V_VCAGAIN:V_VCAGAIN_L] = e[24:9];   // 本期 vca_gain 跟随 velocity_gain
+            //  ⚠ 2026-10-12 修正：原先这里写 `e[24:9]`（= velocity_gain），
+            //     而 `adsr_vca` 里是 `g_vt = (velocity_gain * vca_gain) >>> 15`，
+            //     两个字段同源 → **力度被平方**（g_vt ∝ vel²）。
+            //     实测后果：vel=127 只有 24.6% 增益、vel=100 只有 15.3%、
+            //     vel=64 只有 6.25%、vel=1 直接变成 0（完全无声）。
+            //     通道音量/表情已由通道层（chan_layer）处理，这里不需要再承载力度，
+            //     故固定为 1.0（32768），使 g_vt 等于 velocity_gain，力度恢复线性。
+            t[V_VCAGAIN:V_VCAGAIN_L] = 16'd32768;   // 1.0（力度由 velocity_gain 单独承载）
+            //  音符号 → 相位增量（原实现漏写；note 就在 e[46:40]）
+            t[V_PHINC  :V_PHINC_L  ] = note2inc(e[46:40]);
             apply_alloc = t;
         end
     endfunction

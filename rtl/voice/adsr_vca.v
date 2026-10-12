@@ -153,7 +153,11 @@ module adsr_vca (
 
     //---------------- VCA ----------------
     // 控制率先合并两个慢变系数：g_vt = (velocity_gain × vca_gain) >>> 15
-    wire [31:0] g_vt = (velocity_gain * vca_gain) >>> 15;
+    //  ⚠ 2026-10-12：两个操作数**显式扩展到 32 位**再相乘。
+    //     实测（iverilog）当前写法结果与显式扩展一致（赋值上下文会把表达式拉到 32 位），
+    //     但依赖工具推断。本项目在 fx_reverb 上踩过"操作数没扩展 → 乘积被截断"的坑，
+    //     故统一改成显式扩展，语义不依赖上下文。
+    wire [31:0] g_vt = (({16'd0, velocity_gain}) * ({16'd0, vca_gain})) >>> 15;
 
     // 采样率路径：p48 = audio_in × env_value（40 位，符号扩展进 48 位）
     wire signed [39:0] p40    = audio_in * $signed({1'b0, env_value});

@@ -120,9 +120,9 @@ module chan_table #(
     reg [15:0] bend_tbl   [0:511];         // 2^(Δsemi/12)，覆盖 ±24 半音
 
     initial begin
-        $readmemh("pan_gl.hex",   pan_gl_tbl);
-        $readmemh("pan_gr.hex",   pan_gr_tbl);
-        $readmemh("bend_exp.hex", bend_tbl);
+        $readmemh("data/pan_gl.hex",   pan_gl_tbl);
+        $readmemh("data/pan_gr.hex",   pan_gr_tbl);
+        $readmemh("data/bend_exp.hex", bend_tbl);
     end
 
     //========================================================================
@@ -181,6 +181,13 @@ module chan_table #(
         else             ev_cc_wr_d <= ev_cc_wr;
     wire ev_cc_pulse = ev_cc_wr & ~ev_cc_wr_d;
 
+    //  ⚠ 声明必须在使用之前（Verilog 要求）：本行原来在 190 行之后，
+    //     而 `wr_en` 在它之前就引用了 `dumping_wait` → iverilog 报
+    //     `Unable to bind wire/reg/memory 'dumping_wait'`。
+    reg       copying;
+    reg       dumping_r;
+    wire      dumping_wait = dumping_r | copying;   // 提交期间不接受新条目
+
     wire        wr_en   = (ev_cc_pulse | ev_pc) & ~dumping_wait;
     wire [3:0]  wr_ch   = ev_cc_pulse ? ev_cc_ch    : ev_pc_ch;
     wire [4:0]  wr_fld  = ev_cc_pulse ? ev_cc_field : 5'd14;       // PC → program
@@ -188,12 +195,11 @@ module chan_table #(
 
     //========================================================================
     // 提交（dumping）：把 FIFO 内条目逐拍写入后台 bank，写完翻转 bank
+    //   ⚠ `copying` / `dumping_r` / `dumping_wait` 已提前到上面声明
+    //     （`wr_en` 要先用到 `dumping_wait`，Verilog 要求先声明后使用）
     //========================================================================
-    reg       copying;                     // 先把"前台整体复制到后台"（1 拍）
-    reg       dumping_r;
     reg [2:0] dump_left;
     assign    dumping = dumping_r;
-    wire      dumping_wait = dumping_r | copying;   // 提交期间不接受新条目
 
     //========================================================================
     // 字段应用（把一条 FIFO 条目作用到 182 位项上，并重算派生字段）
@@ -304,6 +310,29 @@ module chan_table #(
                 bank1[k][B_DTIMB :B_DTIMB_L] <= DEF_DEFAULT_TIMBRE;
                 bank0[k][B_MAXV  :B_MAXV_L  ] <= DEF_MAX_VOICES;
                 bank1[k][B_MAXV  :B_MAXV_L  ] <= DEF_MAX_VOICES;
+
+                //  ⚠ **上电可发声的默认参数**（2026-10-08 加，集成时发现的问题）：
+                //     原先三份 bank 全 0 → `ext_volume=0` → 通道层增益 0
+                //     → **MIDI 收到了、声部也分配了，但整链没声音**。
+                //     实测症状：`ch_vld` 在跑、`ch_l` 恒 0、`mx_l` 恒 0。
+                //     GM 默认：音量 100、表情 127、声像 64（居中）。
+                //     `pan_gL/R` 是**派生字段**，由 pan=64 经等功率律算出，不必在此写。
+                bank0[k][B_VOLUME :B_VOLUME_L] <= 7'd100;
+                bank1[k][B_VOLUME :B_VOLUME_L] <= 7'd100;
+                bank0[k][B_EXPR   :B_EXPR_L  ] <= 7'd127;
+                bank1[k][B_EXPR   :B_EXPR_L  ] <= 7'd127;
+                bank0[k][B_PAN    :B_PAN_L   ] <= 7'd64;
+                bank1[k][B_PAN    :B_PAN_L   ] <= 7'd64;
+
+                //  `pan_gL/R` 是**派生字段**，正常只在"字段变化"时重算
+                //  （见本文件 §字段应用）。复位时不初始化就会留 0 → 增益 0 → 无声。
+                //  这里直接写等功率表在 pan=64（居中）处的值：
+                //      gL = gR = cos(π/4) = 0.7071 → Q1.15 = 23170
+                //  （`pan_gl.hex` / `pan_gr.hex` 第 64 项就是这个值，故一致。）
+                bank0[k][B_PANGL  :B_PANGL_L ] <= 16'sd23170;
+                bank1[k][B_PANGL  :B_PANGL_L ] <= 16'sd23170;
+                bank0[k][B_PANGR  :B_PANGR_L ] <= 16'sd23170;
+                bank1[k][B_PANGR  :B_PANGR_L ] <= 16'sd23170;
             end
         end else begin
             //================================================================
