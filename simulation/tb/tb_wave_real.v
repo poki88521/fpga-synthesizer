@@ -72,6 +72,7 @@ module tb_wave_real;
 
     voice_mono u_voice (
         .clk (clk), .rst_async_n (rst_async_n), .sample_en (sample_en),
+                .slot         (2'd0),
         .phase_inc (phase_inc), .wave_sel (2'd0), .timbre_slot (timbre_slot),
         .f_coeff (f_coeff), .q_coeff (q_coeff), .filter_type (filter_type),
         .gate (gate), .sustain_pedal (sustain_pedal), .adsr_curve (adsr_curve),

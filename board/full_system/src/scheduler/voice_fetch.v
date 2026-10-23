@@ -70,6 +70,8 @@ module voice_fetch #(
     // ——— 通道表的 sustain_pedal（来自 chan_param_shadow；它已经在扫全部通道）———
     //     voice_mono 需要它：延音踏板保持由 ADSR 自己判定（§三.六.3）
     input  wire [NCH-1:0] ch_sust_pedal,
+    input  wire [NCH*16-1:0] ch_bend_ratio,   // 每通道弯音比（Q2.14，16384 = 1.0）
+    input  wire [NCH*16-1:0] ch_vib_ratio,    // 每通道颤音比（Q2.14，16384 = 不颤）
 
     // ——— 预取输出（给单声部层；P 组）———
     output reg  [P*32-1:0] pf_phase_inc,
@@ -272,6 +274,56 @@ module voice_fetch #(
     reg [31:0] inc_tbl [0:127];
     initial $readmemh("data/note_inc.hex", inc_tbl);
 
+    //  音符号 → 相位增量（查表）
+    //  弯音比按通道号取值（与 sust_sel 同一模式）
+    function [15:0] bend_sel;
+        input [3:0]      ch;
+        input [NCH*16-1:0] flat;
+        integer b;
+        begin
+            b = ch;
+            bend_sel = flat[b*16 +: 16];
+        end
+    endfunction
+
+    //  ⚠ 2026-10-17：原来用模块级 `reg [63:0] inc64` 做中间容器，
+    //     它在 generate-for 展开后**每个副本都会驱动同一根网** ——
+    //     iverilog 容忍（最后一次赋值生效），但 Gowin 报
+    //       EX2000 Net 'inc64[47]' is constantly driven from multiple places
+    //     改用**函数局部变量**，只在本副本内有效。
+    //
+    //  应用倍率：table × ratio(Q2.14) >>> 14，饱和到 32 位
+    function [31:0] apply_ratio;
+        input [31:0] base;
+        input [15:0] ratio;
+        reg   [63:0] p;
+        begin
+            p = {32'd0, base} * {48'd0, ratio};    // 64 位容器，避免 32×16 被截断
+            p = p >>> 14;
+            apply_ratio = (p > 64'h0000_0000_FFFF_FFFF) ? 32'hFFFF_FFFF : p[31:0];
+        end
+    endfunction
+
+    //  把「弯音比 × 颤音比」先合成总倍率（Q2.14），预取路径上只剩一次乘法。
+    //  ⚠ 16×16 的乘积必须放进 32 位容器 —— Verilog 的 `a*b` 结果位宽取 max(宽度)，
+    //     直接用 16 位容器会截断（今天在 chan_table 的插值上已经栽过一次）。
+    function [15:0] vib_bend_ratio;
+        input [3:0]        ch;
+        input [NCH*16-1:0] bend_flat;
+        input [NCH*16-1:0] vib_flat;
+        reg [15:0] b, v;
+        reg [31:0] prod;
+        integer c;
+        begin
+            c    = ch;
+            b    = bend_flat[c*16 +: 16];
+            v    = vib_flat [c*16 +: 16];
+            prod = b * v;                    // 32 位容器，完整乘积
+            prod = prod >> 14;               // → Q2.14
+            vib_bend_ratio = (prod > 32'd65535) ? 16'hFFFF : prod[15:0];   // 饱和
+        end
+    endfunction
+
     function [31:0] note2inc;
         input [6:0]  note;
         begin
@@ -335,16 +387,94 @@ module voice_fetch #(
     //========================================================================
     // 预取（P 路并行读 vtab）
     //========================================================================
+    //  ⚠⚠ 2026-10-21：预取路径改成 **4 选 1 读 + 三级流水**（原来一拍里串
+    //      "隐性的 32 选 1 读 mux" + 两个乘法）。
+    //
+    //  问题（连续多轮 P&R 的唯一最差路径，见 scratch/agent/待处理_预取时序.md）：
+    //      slot → vtab[vid]（32 项读 mux）→ vib_bend_ratio(16×16) → apply_ratio(32×16) → 饱和
+    //      实测数据延时 23.7 ns，而时钟周期只有 20.345 ns → slack −3.47 ns，
+    //      报告里最差的 25 条端点全在这一族。
+    //
+    //  两处改动：
+    //  ① **把 32 选 1 降到 4 选 1**：本泳道的 `vid = {nslot, gl}`，低 3 位 `gl` 是
+    //     generate 常量，所以候选只有 4 个条目。之前写成 `vtab[vid]` 时综合未必
+    //     利用这个常量关系，实测把 mux 做成了大网络（路径里有 5 级 LUT、跨区跳线
+    //     共约 13 ns）。这里显式写成 4 选 1，既缩短延时也减少拥塞。
+    //  ② **三级流水**（每级只做一件事）：
+    //        A：slot_vld 当拍   → 读出并锁存要用的字段（it_r）
+    //        B：slot_vld 后 1 拍 → ratio_r <= bend×vib（16×16）
+    //        C：slot_vld 后 2 拍 → pf_phase_inc <= phinc×ratio（32×16）+ 饱和
+    //     其余 pf_* 字段在 B 级写入（无乘法，路径短）。
+    //
+    //  安全性：时隙周期 STRIDE = 32 拍，第 3 拍就出结果（余量约 29 拍）；
+    //    voice_mono 是在**下一个** slot_vld 才采样 pf_*，拿到的仍是稳定值，
+    //    "预取提前一个时隙"的语义完全不变。
+    //========================================================================
+    reg slot_vld_d1, slot_vld_d2;       // 第 2 / 第 3 级的使能
+    always @(posedge clk or negedge rst_n_sync) begin
+        if (!rst_n_sync) begin
+            slot_vld_d1 <= 1'b0;
+            slot_vld_d2 <= 1'b0;
+        end else begin
+            slot_vld_d1 <= slot_vld;
+            slot_vld_d2 <= slot_vld_d1;
+        end
+    end
+
     genvar gl;
     generate
         for (gl = 0; gl < P; gl = gl + 1) begin : g_pf
             // 下一时隙号
             wire [1:0] nslot = (slot == 2'd3) ? 2'd0 : (slot + 2'd1);
-            wire [4:0] vid   = {nslot, gl[2:0]};
-            wire [224:0] it  = vtab[vid];
+
+            // ---- ① 显式的 4 选 1 读（低 3 位 = 本泳道号，是常量）----
+            wire [224:0] it =
+                (nslot == 2'd0) ? vtab[{2'd0, gl[2:0]}] :
+                (nslot == 2'd1) ? vtab[{2'd1, gl[2:0]}] :
+                (nslot == 2'd2) ? vtab[{2'd2, gl[2:0]}] :
+                                  vtab[{2'd3, gl[2:0]}];
+
+            // ---- A 级：把要用的字段锁存（只锁 79 位，避免把 225 位都做进 mux）----
+            //   { phinc(32) | vcagain(16) | velgain(16) | note(7) | ch(4) | timbre(3) | gate(1) }
+            reg [78:0] it_r;
+            always @(posedge clk or negedge rst_n_sync) begin
+                if (!rst_n_sync) it_r <= 79'd0;
+                else if (slot_vld) it_r <= {
+                    it[V_PHINC  :V_PHINC_L  ],
+                    it[V_VCAGAIN:V_VCAGAIN_L],
+                    it[V_VELGAIN:V_VELGAIN_L],
+                    it[V_NOTE   :V_NOTE_L   ],
+                    it[V_CH     :V_CH_L     ],
+                    it[V_TIMBRE :V_TIMBRE_L ],
+                    it[V_GATE]
+                };
+            end
+
+            wire [31:0] r_phinc   = it_r[78:47];
+            wire [15:0] r_vcagain = it_r[46:31];
+            wire [15:0] r_velgain = it_r[30:15];
+            wire [ 6:0] r_note    = it_r[14:8];
+            wire [ 3:0] r_ch      = it_r[7:4];
+            wire [ 2:0] r_timbre  = it_r[3:1];
+            wire        r_gate    = it_r[0];
+
+            // ---- B 级：只算 bend×vib 倍率（16×16）----
+            reg [15:0] ratio_r;
+            always @(posedge clk or negedge rst_n_sync) begin
+                if (!rst_n_sync)       ratio_r <= 16'd0;
+                else if (slot_vld_d1)  ratio_r <= vib_bend_ratio(r_ch, ch_bend_ratio, ch_vib_ratio);
+            end
+
+            // ---- C 级：只做 phinc×ratio（32×16）+ 饱和 ----
+            //  ⚠ 乘积必须用 **64 位容器**（见 apply_ratio 内部说明）。
+            always @(posedge clk or negedge rst_n_sync) begin
+                if (!rst_n_sync)      pf_phase_inc[gl*32 +: 32] <= 32'd0;
+                else if (slot_vld_d2) pf_phase_inc[gl*32 +: 32] <= apply_ratio(r_phinc, ratio_r);
+            end
+
+            // ---- B 级：其余字段（无乘法，路径短）----
             always @(posedge clk or negedge rst_n_sync) begin
                 if (!rst_n_sync) begin
-                    pf_phase_inc[gl*32 +: 32] <= 32'd0;
                     pf_timbre   [gl*3  +: 3 ] <= 3'd0;
                     pf_note     [gl*7  +: 7 ] <= 7'd0;
                     pf_vel_gain [gl*16 +: 16] <= 16'd0;
@@ -352,18 +482,25 @@ module voice_fetch #(
                     pf_ch       [gl*4  +: 4 ] <= 4'd0;
                     pf_gate     [gl]          <= 1'b0;
                     pf_fast_rel [gl]          <= 1'b0;
-                end else if (slot_vld) begin
-                    pf_phase_inc[gl*32 +: 32] <= it[V_PHINC   :V_PHINC_L   ];
-                    pf_timbre   [gl*3  +: 3 ] <= it[V_TIMBRE  :V_TIMBRE_L  ];
-                    pf_note     [gl*7  +: 7 ] <= it[V_NOTE    :V_NOTE_L    ];
-                    pf_vel_gain [gl*16 +: 16] <= it[V_VELGAIN :V_VELGAIN_L ];
-                    pf_vca_gain [gl*16 +: 16] <= it[V_VCAGAIN :V_VCAGAIN_L ];
-                    pf_ch       [gl*4  +: 4 ] <= it[V_CH      :V_CH_L      ];
-                    pf_gate     [gl]          <= it[V_GATE];
-                    pf_fast_rel [gl]          <= v_fast[vid];
-                    pf_sust_pedal[gl]         <= sust_sel(it[V_CH:V_CH_L], ch_sust_pedal);
+                end else if (slot_vld_d1) begin
+                    pf_timbre   [gl*3  +: 3 ] <= r_timbre;
+                    pf_note     [gl*7  +: 7 ] <= r_note;
+                    pf_vel_gain [gl*16 +: 16] <= r_velgain;
+                    pf_vca_gain [gl*16 +: 16] <= r_vcagain;
+                    pf_ch       [gl*4  +: 4 ] <= r_ch;
+                    pf_gate     [gl]          <= r_gate;
+                    pf_fast_rel [gl]          <= v_fast[vid_r];
+                    pf_sust_pedal[gl]         <= sust_sel(r_ch, ch_sust_pedal);
                 end
             end
+
+            //  v_fast 也能用 4 选 1 读（和 it 同一组的第 4 个字段来源）
+            reg [1:0] nslot_r;
+            always @(posedge clk or negedge rst_n_sync) begin
+                if (!rst_n_sync)      nslot_r <= 2'd0;
+                else if (slot_vld)    nslot_r <= nslot;
+            end
+            wire [4:0] vid_r = {nslot_r, gl[2:0]};
         end
     endgenerate
 

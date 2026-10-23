@@ -57,7 +57,7 @@ module wave_fetch #(
         if (!rst_n_sync) begin
             an_r  <= {P*AW{1'b0}};
             an1_r <= {P*AW{1'b0}};
-        end else if (sample_en) begin
+    end else if (start_d) begin     // ⚠ 2026-10-15 修：用 start_d（延后1拍）锁存，
             an_r  <= addr_n_flat;
             an1_r <= addr_n1_flat;
         end
@@ -69,10 +69,16 @@ module wave_fetch #(
     reg [5:0] c;                          // 0 .. NCT（NCT 用于收尾那一拍）
     reg       running;
     reg       start_d;                    // sample_en 延迟 1 拍
+    reg       start_dd;                   // 再延迟 1 拍（保证 an_r 已锁存生效后再开扫）
 
     always @(posedge clk or negedge rst_n_sync) begin
-        if (!rst_n_sync) start_d <= 1'b0;
-        else             start_d <= sample_en;
+        if (!rst_n_sync) begin
+            start_d  <= 1'b0;
+            start_dd <= 1'b0;
+        end else begin
+            start_d  <= sample_en;
+            start_dd <= start_d;
+        end
     end
 
     // 扫描地址：c < NCT 时取第 c 个；否则给 0（收尾拍，数据不使用）
@@ -116,7 +122,7 @@ module wave_fetch #(
         end else begin
             rdy <= 1'b0;
 
-            if (start_d) begin            // 锁存后一拍开始扫
+            if (start_dd) begin           // 锁存后再一拍开始扫（保证 an_r 已生效）
                 c       <= 6'd0;
                 running <= 1'b1;
             end else if (running) begin

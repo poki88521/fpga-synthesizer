@@ -61,6 +61,10 @@ module full_top #(
     input  wire [P*24-1:0]  ext_aud_in,   // P 路并行干信号（Q1.23），与 slot 同拍有效
     input  wire [P*4-1:0]   ext_ch_in,    // 每路声部所属 MIDI 通道号（0~15 = midi_channel−1）
     input  wire [P-1:0]     ext_vld,      // 每路声部有效
+    input  wire             ext_data_vld, // 声部音频真正就绪（来自 voice_mono.vca_en）
+    input  wire [P-1:0]     ext_data_gate,// 与音频同拍的门控（来自 voice_mono.data_gate）
+    input  wire [P*4-1:0]   ext_data_ch,  // 与音频同拍的通道号（来自 voice_mono.data_ch）
+    input  wire             ext_any_gate, // 有任意声部在响（首音到达即退出测试模式）
 
     // ---- 调度层 → 通道状态表（EXT_TABLE=1 时用）----
     input  wire [NCH*7-1:0]  ext_volume,      // 通道音量（7 bit）
@@ -111,6 +115,17 @@ module full_top #(
     //      · 调度层 midi_tick 是按 49.152 MHz ÷1573 算的，用 50 MHz 会偏 1.7%
     //    USE_PLL=0 时它就是 clk50，两者相同 —— 所以纯仿真会掩盖这个差异。
     output wire             clk_sys_o,       // = clk_sys（USE_PLL=1 → 49.152 MHz）
+
+    //  1 位 sigma-delta 音频探针（接 PMOD，示波器用）
+    //  = sample_l 的一阶 SD 调制，**绕过 DAC / 功放 / 耳机口**。
+    //  用途：判断"炸"是 FPGA 内部产生的，还是 DAC/模拟通路引入的。
+    //  不接示波器时它只是一个空闲输出，不影响功能。
+    output wire             dbg_sd,
+
+    //  2026-10-21 加：声部层输出探针（泳道 0 的 VCA 输出，Q1.23 → 取 [23:8] 做 SD）
+    //  与 dbg_sd（sample_l，DAC 之前）对比，就能判断失真出在声部层还是后面的通道/效果层。
+    output wire [23:0]      dbg_voice_aud,
+
 
     //  ⚠ PLL 复位保持（高有效，由外部驱动）：
     //    MS5351 配置完成之前必须**一直**把 PLL 按住 —— 否则它会锁到 MS5351 的
@@ -286,8 +301,17 @@ module full_top #(
     //  真实系统里由调度层（上位机 / SysEx）写这个寄存器。
     //  ⚠ 必须声明在 fx_top / master_chain 实例之前（Verilog 要求先声明后使用）
     // ============================================================
+    //  ⚠ 2026-10-17 改：原来只有 `initial`（综合成常量），所以运行时**无法切换**。
+    //     现在改成带复位的寄存器：上电取 TEST_MODE_DEFAULT，
+    //     一旦有任意声部起音（ext_any_gate），立即退出测试模式进入正常合成。
+    //     ⇒ 一个位流同时覆盖"上电数谱峰"和"正常演奏"两种状态，现场零切换成本。
     reg  test_mode_r;
-    initial test_mode_r = (TEST_MODE_DEFAULT != 0) ? 1'b1 : 1'b0;
+    always @(posedge clk_sys or negedge sys_rst_n) begin
+        if (!sys_rst_n)
+            test_mode_r <= (TEST_MODE_DEFAULT != 0) ? 1'b1 : 1'b0;
+        else if (ext_any_gate)
+            test_mode_r <= 1'b0;
+    end
     wire test_mode = test_mode_r;
 
     // ============================================================
@@ -308,6 +332,18 @@ module full_top #(
         .bclk       (HP_BCK),
         .ws         (HP_WS),
         .din        (HP_DIN)
+    );
+
+    //  ---- 调试探针：中间级引出（不参与功能）----
+
+    //  ---- 调试探针：把 sample_l 调制成 1 位 sigma-delta 送 PMOD ----
+    //  ⚠ 这是**分析工具**，不是功能模块。示波器测它 → FFT，就能看到
+    //     FPGA 内部真正送进 DAC 的音频，与耳机口听到的做对比。
+    sd_out u_sd (
+        .clk   (clk_sys),
+        .rst_n (sys_rst_n),
+        .x     (sample_l),
+        .sd    (dbg_sd)
     );
 
     // ============================================================
@@ -341,12 +377,31 @@ module full_top #(
         .slot(slot), .aud(test_aud)
     );
     //  集成模式下把声部源让给外部单声部层
-    assign voice_aud = USE_EXT_VOICE ? v_aud_c : test_aud;   // v_aud_c = 钳位后的 ext_aud_in
+    //  运行时选择：test_mode=1 → 32 个对数均匀振荡器（数谱峰用）
+    //              test_mode=0 → 正常单声部层音频
+    assign voice_aud = test_mode ? test_aud : v_aud_c;   // v_aud_c = 钳位后的 ext_aud_in
+
+    //  ⚠ 2026-10-22：探针改成 **8 条泳道求和**。
+    //    原来只取泳道 0，而 MIDI 分配器把音符分到哪条泳道是任意的 —— 实测
+    //    泳道 0 空闲时 E25 读到 2.9 V 直流、按键不变，探针等于白接。
+    //    空闲声部的 VCA 输出正好是 0，所以求和后**只剩真正在响的声部**。
+    //    打一拍寄存（探针不需要低延迟），避免这条加法链自己变成新的违例路径。
+    reg signed [23:0] dbg_va_r;
+    always @(posedge clk_sys or negedge sys_rst_n) begin
+        if (!sys_rst_n)
+            dbg_va_r <= 24'sd0;
+        else
+            dbg_va_r <= $signed(voice_aud[23:0])    + $signed(voice_aud[47:24])
+                      + $signed(voice_aud[71:48])   + $signed(voice_aud[95:72])
+                      + $signed(voice_aud[119:96])  + $signed(voice_aud[143:120])
+                      + $signed(voice_aud[167:144]) + $signed(voice_aud[191:168]);
+    end
+    assign dbg_voice_aud = dbg_va_r;                     // 探针：8 泳道 VCA 输出之和
 
     // 声部固定挂在通道 0..P-1（8 条泳道 → 通道 0~7），全部有效
     wire [P-1:0]    lane_vld;
     wire [P*4-1:0]  lane_ch;
-    assign lane_vld = USE_EXT_VOICE ? v_vld_c : {P{1'b1}};   // v_vld_c = 钳位后的 ext_vld
+    assign lane_vld = test_mode ? {P{1'b1}} : v_vld_c;   // 测试模式全部有效；否则看 ext_vld
     genvar gi;
     generate
         //  ⚠ Verilog-2001 的 generate-for **必须**写成 `begin : 块名` 形式。
@@ -355,7 +410,7 @@ module full_top #(
         //       EX3788 Block identifier is required on this block
         //     iverilog 对此宽容不报，是 Gowin 综合时抓到的。
         for (gi = 0; gi < P; gi = gi + 1) begin : g_lane_ch
-            assign lane_ch[gi*4 +: 4] = USE_EXT_CH ? v_ch_c[gi*4 +: 4] : gi[3:0];  // 钳位后的 ext_ch_in
+            assign lane_ch[gi*4 +: 4] = test_mode ? gi[3:0] : v_ch_c[gi*4 +: 4];  // 测试模式固定 0..P-1
         end
     endgenerate
 
@@ -413,8 +468,26 @@ module full_top #(
 
     chan_layer #(.P(P), .G(G), .AW(24), .CW(4), .NCH(NCH), .SW(2)) u_chan (
         .clk(clk_sys), .rst_n(sys_rst_n), .frame_stb(sample_stb),
-        .slot_vld(slot_vld), .slot(slot), .vld(lane_vld),
-        .ch_in(lane_ch), .aud_in(voice_aud),
+        //  ⚠⚠ 2026-10-19：正常模式下必须用 **ext_data_vld**（音频就绪脉冲），
+        //     不能用 slot_vld（时隙起点，比音频就绪早约 23 拍）。
+        //     用 slot_vld 会导致 chan_buf 存进上一个时隙的音频 → 声部/通道/门控错位 → 噪音。
+        //     测试模式下 test_voice_gen 是组合可用的，仍用 slot_vld。
+        //
+        //  ⚠⚠ 2026-10-19 补充：判据必须是 **(test_mode || !USE_EXT_VOICE)**，不能只看 test_mode。
+        //     `VOICE_SRC=0`（内置 test_voice_gen）时声部音频本来就按时隙直接可用，
+        //     不需要 23 拍的对齐延迟；此时若走 ext_data_vld，而该端口在独立使用时
+        //     没人驱动（悬空=0），chan_layer 会永远停在 IDLE → 整链无声。
+        //     （实测：tb_full_top / tb_full_top_timing 因此报「ch_vld 每帧 0 次」。）
+        //     `VOICE_SRC=1`（外部单声部层）时才需要 ext_data_* 的同拍对齐。
+        .slot_vld((test_mode || !USE_EXT_VOICE) ? slot_vld : ext_data_vld), .slot(slot),
+        //  ⚠ 2026-10-19：外部声部模式必须用"与音频同拍"的门控/通道号。
+        //     lane_vld/lane_ch 来自 pf_gate/pf_ch —— 而 voice_fetch 是**预取**结构，
+        //     pf_* 在 slot_vld 那一拍就更新成**下一个时隙**的声部了，
+        //     于是 pf_gate/pf_ch 相对音频"提前一个时隙" → 门控与音频不匹配 → 全静音。
+        //     ext_data_gate / ext_data_ch 是 voice_mono 在 dds_en（与音频同拍）锁存的。
+        .vld ((test_mode || !USE_EXT_VOICE) ? lane_vld : ext_data_gate),
+        .ch_in((test_mode || !USE_EXT_VOICE) ? lane_ch : ext_data_ch),
+        .aud_in(voice_aud),
         .volume(volume_f), .expression(expr_f),
         .pan_gL(panL_f), .pan_gR(panR_f),
         .ch_vld(ch_vld), .ch_addr(ch_addr), .ch_l(ch_l), .ch_r(ch_r),
@@ -455,15 +528,15 @@ module full_top #(
         .reverb_decay  (USE_EXT_FXPAR ? e_rvdec_c   : 16'sd31000),
         .reverb_damping(USE_EXT_FXPAR ? e_rvdmp_c : 16'sd9000),
         .reverb_pre_delay(USE_EXT_FXPAR ? e_rvpd_c : 16'd0),
-        .reverb_return (USE_EXT_FXPAR ? e_rvret_c  : 16'sd16000),
+        .reverb_return (USE_EXT_FXPAR ? e_rvret_c  : 16'sd26000),  // 2026-10-23: 32767→26000，湿声 0.45→0.36 FS，避免 main_mix 削顶
         .chorus_rate   (USE_EXT_FXPAR ? e_chrt_c    : 16'd300),
         .chorus_depth  (USE_EXT_FXPAR ? e_chdp_c   : 16'sd20000),
         .chorus_mix    (USE_EXT_FXPAR ? e_chmx_c     : 16'sd23000),
-        .chorus_return (USE_EXT_FXPAR ? e_chrt2_c  : 16'sd12000),
+        .chorus_return (USE_EXT_FXPAR ? e_chrt2_c  : 16'sd9000),
         .delay_time    (USE_EXT_FXPAR ? e_dlyt_c     : 16'd14000),
-        .delay_feedback(USE_EXT_FXPAR ? e_dlyfb_c : 16'sd22000),
+        .delay_feedback(USE_EXT_FXPAR ? e_dlyfb_c : 16'sd15000),
         .delay_mix     (USE_EXT_FXPAR ? e_dlymx_c      : 16'sd24000),
-        .delay_return  (USE_EXT_FXPAR ? e_dlyrt_c   : 16'sd12000),
+        .delay_return  (USE_EXT_FXPAR ? e_dlyrt_c   : 16'sd9000),
         .fx_vld(fx_vld), .fx_l(fx_l), .fx_r(fx_r)
     );
 

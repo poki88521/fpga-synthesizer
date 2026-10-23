@@ -40,6 +40,11 @@ module chan_param_shadow #(
     input  wire [6:0]  rd_send_chorus,
     input  wire [6:0]  rd_send_delay,
     input  wire        rd_sustain_pedal,
+    input  wire [15:0] rd_bend_ratio,       // Q2.14，给 voice_fetch 预取做弯音调制
+    input  wire [6:0]  rd_attack_mod,       // CC73 → ADSR attack 调制
+    input  wire [6:0]  rd_release_mod,      // CC72 → ADSR release 调制
+    input  wire [6:0]  rd_resonance_mod,    // CC71 → SVF 谐振调制
+    input  wire [6:0]  rd_cutoff_mod,       // CC74 → SVF 截止频率调制
 
     // ——— 给 full_top 的 ext_*（帧内恒定）———
     output reg [NCH*7-1:0]  ext_volume,
@@ -51,7 +56,18 @@ module chan_param_shadow #(
     output reg [NCH*7-1:0]  ext_send_del,
 
     // ——— 给 voice_fetch 预取 sustain_pedal ———
-    output reg [NCH-1:0]    ch_sust_pedal
+    output reg [NCH-1:0]    ch_sust_pedal,
+
+    // ——— 给 voice_fetch 预取 bend_ratio（弯音）———
+    //  ⚠ 复位值必须是 16384（Q2.14 的 1.0），**不能是 0** —— 0 表示音高 ×0 = 无声
+    output reg [NCH*16-1:0] ch_bend_ratio,
+
+    // ——— 通道级实时音色调制（CC71/72/73/74），给 full_system 换算成 voice_mono 参数 ———
+    //  语义：64 = 中心（不调制，等于编译期默认值）；<64 减小，>64 增大
+    output reg [NCH*7-1:0]  ext_attack_mod,
+    output reg [NCH*7-1:0]  ext_release_mod,
+    output reg [NCH*7-1:0]  ext_reson_mod,
+    output reg [NCH*7-1:0]  ext_cutoff_mod
 );
     //--------------------------------------------------------------- 扫描缓冲
     reg [6:0]  vol_s  [0:NCH-1];
@@ -62,6 +78,11 @@ module chan_param_shadow #(
     reg [6:0]  sch_s  [0:NCH-1];
     reg [6:0]  sde_s  [0:NCH-1];
     reg        sus_s  [0:NCH-1];
+    reg [15:0] br_s   [0:NCH-1];
+    reg [6:0]  atk_s  [0:NCH-1];
+    reg [6:0]  rel_s  [0:NCH-1];
+    reg [6:0]  res_s  [0:NCH-1];
+    reg [6:0]  cut_s  [0:NCH-1];
 
     reg [3:0]  scan_i;
 
@@ -79,6 +100,11 @@ module chan_param_shadow #(
                 sch_s [k] <= 7'd0;
                 sde_s [k] <= 7'd0;
                 sus_s [k] <= 1'b0;
+                br_s  [k] <= 16'd16384;      // 1.0，不弯音
+                atk_s [k] <= 7'd64;
+                rel_s [k] <= 7'd64;
+                res_s [k] <= 7'd64;
+                cut_s [k] <= 7'd64;
             end
         end else begin
             // 扫描指针自由运行（0→15 循环）
@@ -95,6 +121,11 @@ module chan_param_shadow #(
             sch_s [rd_ch] <= rd_send_chorus;
             sde_s [rd_ch] <= rd_send_delay;
             sus_s [rd_ch] <= rd_sustain_pedal;
+            br_s  [rd_ch] <= rd_bend_ratio;
+            atk_s [rd_ch] <= rd_attack_mod;
+            rel_s [rd_ch] <= rd_release_mod;
+            res_s [rd_ch] <= rd_resonance_mod;
+            cut_s [rd_ch] <= rd_cutoff_mod;
         end
     end
 
@@ -114,6 +145,11 @@ module chan_param_shadow #(
                     ext_pan_gL    [gi*16 +: 16] <= 16'd0;
                     ext_pan_gR    [gi*16 +: 16] <= 16'd0;
                     ch_sust_pedal [gi]          <= 1'b0;
+                    ch_bend_ratio [gi*16 +: 16] <= 16'd16384;
+                    ext_attack_mod[gi*7 +: 7]   <= 7'd64;
+                    ext_release_mod[gi*7 +: 7]  <= 7'd64;
+                    ext_reson_mod[gi*7 +: 7]    <= 7'd64;
+                    ext_cutoff_mod[gi*7 +: 7]   <= 7'd64;
                 end else if (frame_stb) begin
                     ext_volume    [gi*7  +: 7 ] <= vol_s [gi];
                     ext_expression[gi*7  +: 7 ] <= exp_s [gi];
@@ -123,6 +159,11 @@ module chan_param_shadow #(
                     ext_pan_gL    [gi*16 +: 16] <= panl_s[gi];
                     ext_pan_gR    [gi*16 +: 16] <= panr_s[gi];
                     ch_sust_pedal [gi]          <= sus_s [gi];
+                    ch_bend_ratio [gi*16 +: 16] <= br_s [gi];
+                    ext_attack_mod[gi*7 +: 7]   <= atk_s[gi];
+                    ext_release_mod[gi*7 +: 7]  <= rel_s[gi];
+                    ext_reson_mod[gi*7 +: 7]    <= res_s[gi];
+                    ext_cutoff_mod[gi*7 +: 7]   <= cut_s[gi];
                 end
             end
         end

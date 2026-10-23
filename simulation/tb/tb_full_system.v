@@ -35,7 +35,7 @@ module tb_full_system;
     reg [3:0] midi_rx = 4'hF;             // 空闲线 = 1
 
     full_system #(
-        .USE_PLL(0), .P(P), .G(4), .NCH(NCH), .STRIDE(8),
+        .USE_PLL(0), .P(P), .G(4), .NCH(NCH), .STRIDE(32),
         .PA_DELAY(8), .POR_BITS(8),
         .TEST_MODE_DEFAULT(0),            // 关测试模式：走真实 MIDI→发声 通路
         .WAVE_INIT_FILE("data/wave_table.hex")  // ⚠ 相对**仿真工作目录**；不载入则 ROM 未初始化 → 全 X
@@ -71,11 +71,29 @@ module tb_full_system;
     integer     l_min = 1<<20, l_max = -(1<<20);
     integer     r_min = 1<<20, r_max = -(1<<20);
     integer     l_nz = 0, r_nz = 0;
+    //  ⚠ 2026-10-13 新增：左声道峰峰值下限。
+    //     原来只查"全零"，而 ±1 的抖动就能骗过它（实测 vel=20/127 都得到 l_max=0、l_min=-1）。
+    localparam  AMP_MIN = 64;
+    integer     p2p_l;
 
     //  ⚠ 不要在 TB 里按 BCK 边沿解码（早先那样写得到"98 样本/2ms、右声道 0 个"的
     //     假结果 —— 边沿计数与 WS 半帧不对齐）。直接读**设计内部**的每采样输出：
     //     `u_full_top.sample_l/sample_r` 就是送往 PT8211 的那两个字。
     integer sx_l = 0, sx_r = 0;
+    //  ⚠ 2026-10-13 加：跨整个观察窗的**最大值**跟踪。
+    //     因为 pf_* / rs_* 都是**时隙相关**的（泳道 0 在不同时隙对应声部 0/8/16/24），
+    //     抓某一瞬间的值会误导（会正好落在 phase_inc=0 的那个时隙上）。
+    integer max_pf_inc   = 0;
+    integer max_rs_phacc = 0;
+    integer max_rs_env   = 0;
+    integer rom_rdy_cnt  = 0;
+    always @(posedge clk50) if (dut.rst_n_sync) begin
+        if (dut.pf_phase_inc[31:0]   > max_pf_inc)   max_pf_inc   = dut.pf_phase_inc[31:0];
+        if (dut.rs_phase_acc[31:0]   > max_rs_phacc) max_rs_phacc = dut.rs_phase_acc[31:0];
+        if ($signed(dut.rs_env_value[15:0]) > max_rs_env) max_rs_env = $signed(dut.rs_env_value[15:0]);
+        if (dut.rom_rdy) rom_rdy_cnt = rom_rdy_cnt + 1;
+    end
+
     //  单声部层与通道层的幅度统计（定位"声音在哪一级变小"）
     integer va_min = 1<<30, va_max = -(1<<30);
     integer chv_cnt = 0, svld_cnt = 0, bufwr = 0;
@@ -185,9 +203,34 @@ module tb_full_system;
             $display("  FAIL: I2S 样本太少（%0d）—— 帧节拍可能没跑", n_l - t0); errs = errs + 1;
         end else $display("     I2S 帧在正常输出 ✓");
 
-        if (l_nz == 0) begin
-            $display("  FAIL: 左声道全零（没出声音）"); errs = errs + 1;
-        end else $display("     左声道有非零样本 ✓");
+        //  ⚠ 2026-10-13 收紧判据：原来只查"全零"，而 ±1 的抖动就能骗过它
+        //     （实测 vel=20 与 vel=127 都得到 l_max=0、l_min=-1，照样 PASS）。
+        //     改成**峰峰值**判据：真正的音频信号应远超这个阈值。
+        //  ⚠ 2026-10-13 加：单声部层内部逐级探针（定位信号在哪一级变 0）
+        $display("");
+        $display("       --- 单声部层内部（泳道 0 / 声部 0）---");
+        $display("       pf_gate       = %b", dut.pf_gate);
+        $display("       pf_phase_inc  = %h", dut.pf_phase_inc[31:0]);
+        $display("       rs_phase_acc  = %h  (相位累加器)", dut.rs_phase_acc[31:0]);
+        $display("       rs_env_value  = %0d  (包络)", $signed(dut.rs_env_value[15:0]));
+        $display("       rs_env_state  = %0d  (0=IDLE 1=ATK 2=DEC 3=SUS 4=REL)", dut.rs_env_state[2:0]);
+        $display("       tab_n  (波表) = %0d   tab_n1 = %0d", $signed(dut.tab_n[15:0]), $signed(dut.tab_n1[15:0]));
+        $display("       rom_rdy       = %b   (取数就绪)", dut.rom_rdy);
+        $display("       rom_addr_n[13:0] = %h  (读地址)", dut.rom_addr_n[13:0]);
+        $display("");
+        $display("       --- 跨整个观察窗的最大值（关键！）---");
+        $display("       max pf_phase_inc   = %h   (非 0 才说明预取到了相位增量)", max_pf_inc);
+        $display("       max rs_phase_acc   = %h   (非 0 才说明 DDS 在累加)", max_rs_phacc);
+        $display("       max rs_env_value   = %0d", max_rs_env);
+        $display("       rom_rdy 脉冲次数    = %0d", rom_rdy_cnt);
+        $display("");
+
+        p2p_l = l_max - l_min;
+        $display("     左声道峰峰值 = %0d（阈值 %0d）", p2p_l, AMP_MIN);
+        if (p2p_l < AMP_MIN) begin
+            $display("  FAIL: 左声道峰峰值太小（%0d < %0d）—— 没有真正出声", p2p_l, AMP_MIN);
+            errs = errs + 1;
+        end else $display("     左声道幅度正常 ✓");
 
         if ((l_max - l_min) < 10) begin
             $display("  ⚠ 幅度极小（%0d）—— 波表 ROM 未载入时可能如此", l_max - l_min);
@@ -255,6 +298,27 @@ module tb_full_system;
         #500_000_000;
         $display("FAIL  tb_full_system: 超时");
         $finish;
+    end
+
+    //========================================================================
+    //  2026-10-22 加：**数字域黄金参考** dump
+    //
+    //  每个采样帧把 4 路信号写成一行，供离线的频谱/跳变分析：
+    //      sample_l          整链最终输出（送 DAC 的 16 位）
+    //      voice_aud[23:0]   泳道 0 的 VCA 输出
+    //      dbg_va_r          8 泳道 VCA 输出之和（= 探针 E25 看到的信号）
+    //      ch_l              通道层输出（效果器之前）
+    //  目的：判断"炸"到底是 RTL 逻辑就有的，还是只在硬件上（时序/模拟）才出现。
+    //========================================================================
+    integer fd;
+    initial fd = $fopen("D:/code/fpga-synthesizer/folder-reorg/scratch/agent/probe_full.txt", "w");
+    always @(posedge clk50) begin
+        if (dut.rst_n_sync && dut.sample_stb)
+            $fwrite(fd, "%0d %0d %0d %0d\n",
+                    $signed(dut.u_full_top.sample_l),
+                    $signed(dut.u_full_top.voice_aud[23:0]),
+                    $signed(dut.u_full_top.dbg_va_r),
+                    $signed(dut.u_full_top.ch_l));
     end
 endmodule
 `default_nettype wire

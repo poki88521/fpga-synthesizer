@@ -91,4 +91,31 @@ IO_LOC "mux_sel1" P19;
 IO_PORT "mux_sel1" IO_TYPE=LVCMOS33 DRIVE=8 PULL_MODE=NONE BANK_VCCIO=3.3;
 
 IO_LOC "mux_sel2" P26;
+
+// ---------- 调试 LED（4 个空闲用户 LED）----------
+//  P0 M25 = USR_LED.3      P1 L20 = USR_LED.2
+//  P2 N21 = USR_LED.4      P3 R26 = USR_LED.1
+//  [2:0] = 泳道0 音色槽（发 pc N 看图样变化）  [3] = 事件脉冲（测延迟）
+IO_LOC "dbg_led[0]" M25;                          // USR_LED.3
+IO_PORT "dbg_led[0]" IO_TYPE=LVCMOS33 DRIVE=8 BANK_VCCIO=3.3;
+IO_LOC "dbg_led[1]" L20;                          // USR_LED.2
+IO_PORT "dbg_led[1]" IO_TYPE=LVCMOS33 DRIVE=8 BANK_VCCIO=3.3;
+IO_LOC "dbg_led[2]" N21;                          // USR_LED.4
+IO_PORT "dbg_led[2]" IO_TYPE=LVCMOS33 DRIVE=8 BANK_VCCIO=3.3;
+IO_LOC "dbg_led[3]" R26;                          // USR_LED.1
+IO_PORT "dbg_led[3]" IO_TYPE=LVCMOS33 DRIVE=8 BANK_VCCIO=3.3;
 IO_PORT "mux_sel2" IO_TYPE=LVCMOS33 DRIVE=8 PULL_MODE=NONE BANK_VCCIO=3.3;
+
+// ---- 1 位 sigma-delta 音频探针（示波器用）----
+//   PMOD1 的 IO0（J24 第 1 脚）。PMOD1 全 8 脚都是普通 I/O，不与配置脚冲突。
+//   ⚠ PMOD0（J22）多为 SSPI/配置专用脚（N17=SI、L24=CS、R16=SCLK），不要用。
+IO_LOC  "dbg_sd" C24;
+IO_PORT "dbg_sd" IO_TYPE=LVCMOS33;
+
+// ---- 2026-10-21 加：分级探针（同一块 PMOD1 / J24，其余脚仍空闲）----
+//   dbg_sd_va = voice_aud[泳道0]（SVF + 包络 + VCA 之后） → E25（J24 第 2 脚）
+//   dbg_sd_wv = DDS 波表输出[泳道0]（SVF 之前）           → L17（J24 第 3 脚）
+IO_LOC  "dbg_sd_va" E25;
+IO_PORT "dbg_sd_va" IO_TYPE=LVCMOS33;
+IO_LOC  "dbg_sd_wv" L17;
+IO_PORT "dbg_sd_wv" IO_TYPE=LVCMOS33;

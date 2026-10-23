@@ -35,11 +35,19 @@ module full_system #(
     parameter integer P                  = 8,
     parameter integer G                  = 4,
     parameter integer NCH                = 16,
-    parameter integer STRIDE             = 8,      // ⚠ 必须与调度层一致
+    //  ⚠⚠ 2026-10-19：STRIDE 从 8 改成 32。
+    //     原因：wave_fetch 每个时隙要串行扫 **2P = 16 个地址**（全片只有一份波表 ROM），
+    //     而 STRIDE=8 让时隙每 8 拍就来一次 → 扫描指针被反复清零、**永远扫不完**。
+    //     实测：每帧 slot_vld 4 次，rom_rdy 只有 **1 次** → 4 个时隙里 3 个拿不到波表数据，
+    //     wave_out 停在旧值 → 输出变成阶梯状低频噪音（实板听感就是"炸/乱码"）。
+    //     STRIDE=32 时：时隙在 1/33/65/97，扫描 17 拍完成，余量充足；
+    //     4 个时隙 + 通道层 48 拍 ≈ 169 拍 / 1024，占 16.5%。
+    parameter integer STRIDE             = 32,     // ⚠ 必须与调度层一致（且 ≥ 2P+余量）
     parameter integer N                  = P*G,    // 声部数 = 32
     parameter integer PA_DELAY           = 22,
     parameter integer POR_BITS           = 22,
-    parameter integer TEST_MODE_DEFAULT  = 0,      // 正式跑 0；上板自检可设 1（32 谱线）
+    parameter integer TEST_MODE_DEFAULT  = 1,      // ⚠ 2026-10-17 改为 1：上电进测试模式（32 谱线，
+                                                //   便于现场用频谱仪数峰）；首音到达自动切回正常合成
 
     // ---- 音色参数占位（音色参数表尚未实现，见 poki 交付说明 §五.1）----
     //  这些值会分发给 P 个 voice_mono。等音色参数表到位后，把这里换成
@@ -79,8 +87,32 @@ module full_system #(
     output wire         HP_BCK,
     output wire         HP_WS,
     output wire         HP_DIN,
-    output wire         PA_EN
+    output wire         PA_EN,
+
+    // ---- 调试 LED（4 个空闲用户 LED，上板排查用）----
+    //    [2:0] = 泳道 0 的 timbre_slot —— 发 pc N 应该跟着变（8 种组合）
+    //    [3]   = 声部激活的上升沿展宽 40 ms —— 可接示波器测"按键→出声"延迟
+    //  ⚠ 正式演示若不想要灯闪，把这几个 IO_LOC 注释掉即可（不影响功能）。
+    output wire [3:0]   dbg_led,
+
+    // ---- 1 位 sigma-delta 音频探针（PMOD1_IO0 / J24 第 1 脚，C24）----
+    //    = sample_l 的一阶 SD 调制，**绕过 PT8211 DAC / 功放 / 耳机口**。
+    //    用途：示波器测这一路 → FFT，看 FPGA 内部真正送进 DAC 的音频。
+    //      这一路干净、耳机却炸 → 问题在 DAC / 功放 / 模拟通路
+    //      这一路也炸           → 问题在 FPGA 内部
+    output wire         dbg_sd,      // = sample_l      （整链最终输出，PMOD1_IO0 / C24）
+
+    // ---- 2026-10-21 加的**分级**音频探针（同为 1 位 SD，便于一次定位"炸"在哪一级）----
+    //    把中间信号也引出来，示波器一路一路比：
+    //      dbg_sd_wv : CPU 内 DDS 波表输出（SVF/包络之前）  → 看波表本身干不干净
+    //      dbg_sd_va : voice_aud[泳道0]（SVF+包络+VCA 之后）→ 看滤波器/包络有没有制造失真
+    //      dbg_sd    : sample_l（通道+效果+主输出之后）      → 看后级有没有再添油加醋
+    output wire         dbg_sd_va,   // PMOD1_IO1（J24 第 2 脚，E25）
+    output wire         dbg_sd_wv    // PMOD1_IO2（J24 第 3 脚，L17）
 );
+
+assign dbg_led[3] = ~(dbg_evt_cnt != 22'd0);      // 同上，低电平点亮
+
 
     // ========================================================================
     // 0. MS5351 上电配置（必须用 clk50，不能用 PLL 输出 —— 否则死锁）
@@ -115,8 +147,16 @@ module full_system #(
     wire         rst_n_sync;
     wire         clk_sys;          // full_top 的系统时钟（USE_PLL=1 时 = PLL 的 49.152 MHz）
     wire [P*24-1:0] voice_aud;     // 单声部层 → 通道层
+    wire [P*24-1:0] voice_dbg_wave; // 调试探针：各泳道的 DDS 波表输出（只用泳道 0）
+    wire [23:0]     dbg_va_w;       // 调试探针：voice_aud 泳道 0
+    wire [23:0]     dbg_wv_w;       // 调试探针：DDS 输出 泳道 0
+
     wire [P*4-1:0]  voice_ch;
     wire [P-1:0]    voice_vld;
+    wire [P-1:0]    voice_data_vld;   // 每声部"音频就绪"脉冲（voice_mono 内部 vca_en）
+    wire            voice_data_vld_any;
+    wire [P-1:0]    voice_data_gate;  // 与音频同拍的门控（voice_mono 在 dds_en 锁存）
+    wire [P*4-1:0]  voice_data_ch;    // 与音频同拍的通道号
 
     // 调度层 → full_top 的通道表参数
     wire [NCH*7-1:0]  ext_volume, ext_expression, ext_send_rev, ext_send_cho, ext_send_del;
@@ -140,6 +180,9 @@ module full_system #(
         .HP_BCK(HP_BCK), .HP_WS(HP_WS), .HP_DIN(HP_DIN), .PA_EN(PA_EN),
 
         .ext_aud_in(voice_aud), .ext_ch_in(voice_ch), .ext_vld(voice_vld),
+        .ext_any_gate(any_gate),
+        .ext_data_vld(voice_data_vld_any),
+        .ext_data_gate(voice_data_gate), .ext_data_ch(voice_data_ch),
         .ext_volume(ext_volume), .ext_expression(ext_expression),
         .ext_pan_gL(ext_pan_gL), .ext_pan_gR(ext_pan_gR),
         .ext_send_rev(ext_send_rev), .ext_send_cho(ext_send_cho),
@@ -158,12 +201,34 @@ module full_system #(
         .pll_hold   (~ms_ok),          // MS5351 配好前把 PLL 按住（详见 full_top.v 端口注释）
         .sample_stb_o(sample_stb),
         .rst_n_sync_o(rst_n_sync),
-        .clk_sys_o  (clk_sys)          // ⚠ 外部三层统一用这根，不要用 clk50
+        .clk_sys_o  (clk_sys),         // ⚠ 外部三层统一用这根，不要用 clk50
+        .dbg_sd     (dbg_sd),          // 1 位 SD 音频探针 → PMOD1_IO0
+        .dbg_voice_aud(dbg_va_w)       // 泳道 0 的 VCA 输出 → 另一路 SD 探针
     );
 
     // ========================================================================
-    // 2. 调度层：sched_subsystem（黑盒）
+    // 1.5 分级音频探针（2026-10-21）：把中间信号也调成 1 位 SD
+    //
+    //  ⚠ 只取 24 位采样右移 8 位（Q1.23 → Q1.15），因为 sd_out 的反馈满幅是 ±32767。
+    //  ⚠ 这两路**不参与任何功能**，只驱动两个 PMOD 引脚；不接示波器时完全不影响声音。
     // ========================================================================
+    assign dbg_wv_w = voice_dbg_wave[23:0];      // 泳道 0 的 DDS 输出
+
+    sd_out u_sd_va (
+        .clk   (clk_sys),
+        .rst_n (rst_n_sync),
+        .x     (dbg_va_w[23:8]),                 // 泳道 0 的 VCA 输出（22 位到 16 位）
+        .sd    (dbg_sd_va)
+    );
+
+    sd_out u_sd_wv (
+        .clk   (clk_sys),
+        .rst_n (rst_n_sync),
+        .x     (dbg_wv_w[23:8]),                 // 泳道 0 的 DDS 波表输出
+        .sd    (dbg_sd_wv)
+    );
+
+
     wire [1:0]      slot;
     wire            slot_vld;
     wire            pf_vld;
@@ -173,6 +238,9 @@ module full_system #(
     wire [P*16-1:0] pf_vel_gain, pf_vca_gain;
     wire [P*4-1:0]  pf_ch;
     wire [P-1:0]    pf_gate, pf_fast_rel, pf_sust_pedal;
+
+    //  有任意声部在响 → 首音到达即退出测试模式（32 谱线 → 正常合成）
+    wire any_gate = |pf_gate;
 
     wire [P*32-1:0] rs_phase_acc;
     wire [P*16-1:0] rs_env_value;
@@ -192,6 +260,8 @@ module full_system #(
         .ext_pan_gL(ext_pan_gL), .ext_pan_gR(ext_pan_gR),
         .ext_send_rev(ext_send_rev), .ext_send_cho(ext_send_cho),
         .ext_send_del(ext_send_del),
+        .ext_attack_mod(ext_attack_mod), .ext_release_mod(ext_release_mod),
+        .ext_reson_mod(ext_reson_mod),   .ext_cutoff_mod(ext_cutoff_mod),
 
         .pf_vld(pf_vld), .pf_phase_inc(pf_phase_inc), .pf_timbre(pf_timbre),
         .pf_note(pf_note), .pf_vel_gain(pf_vel_gain), .pf_vca_gain(pf_vca_gain),
@@ -232,13 +302,134 @@ module full_system #(
     wire [15:0] def_slevel   = DEF_SUSTAIN_LEVEL[15:0];
     wire [15:0] def_rstep    = DEF_RELEASE_STEP[15:0];
 
+    //  ⚠ 2026-10-17 新增：通道级实时音色调制（CC71/72/73/74）
+    //     语义：64 = 中心（等于上面的编译期默认值），<64 减小，>64 增大
+    //     换算在每声部（generate 里）按自己的通道号取，见 g_voice 内
+    wire [NCH*7-1:0] ext_attack_mod;
+    wire [NCH*7-1:0] ext_release_mod;
+    wire [NCH*7-1:0] ext_reson_mod;
+    wire [NCH*7-1:0] ext_cutoff_mod;
+
+    //========================================================================
+    //  音色参数表（2026-10-19）
+    //
+    //  背景：原来 8 个音色**只有波表槽不同**，ADSR/滤波器/增益都是同一组常量，
+    //        所以听起来"只有音高变了、性格一样"。这里给每个音色槽一份独立参数。
+    //
+    //  用法：按本泳道的 pf_timbre（3 位）查表得到基准值，
+    //        再叠加 CC71/72/73/74 的通道级实时调制（见下面 cut_s/res_s/atk_s/rel_s）。
+    //
+    //  字段打包（100 位）：
+    //    [99:84] f_coeff       截止基准（Q1.15，存 sin(pi*fc/fs)）
+    //    [83:68] q_coeff       阻尼基准（Q1.15，**越小谐振越强**）
+    //    [67:66] filter_type   0=低通 1=带通 2=高通
+    //    [65:64] adsr_curve    0=线性 1=指数
+    //    [63:48] attack_step   起音步长（越大起音越快）
+    //    [47:32] decay_step    衰减步长
+    //    [31:16] sustain_level 持续电平（Q1.15）
+    //    [15:0]  release_step  释放步长（越大释放越快）
+    //
+    //  ⚠ 这些数值是按"波形特性 + 目标音色性格"推算的，**最终要上板听再调**。
+    //    换算公式与设计依据见 documents/音色参数表.md。
+    //========================================================================
+    function [99:0] tp_of;
+        input [2:0] s;
+        begin
+            case (s)
+                //  槽 0  正弦   → 柔和铺底 / 风琴：慢起慢落、通透明亮、无谐振
+                3'd0: tp_of = {16'd30000, 16'd22000, 2'd0, 2'd0, 16'd2,   16'd1,  16'd24000, 16'd1  };
+                //  槽 1  正弦变体 → 钟琴 / 电钢：快起、有明显衰减尾巴
+                3'd1: tp_of = {16'd16384, 16'd16384, 2'd0, 2'd0, 16'd341, 16'd3,  16'd8000,  16'd2  };
+                //  槽 2  正弦变体 → Pad / 人声：极慢起、非常柔和
+                3'd2: tp_of = {16'd8480,  16'd22000, 2'd0, 2'd0, 16'd1,   16'd1,  16'd26000, 16'd1  };
+                //  槽 3  正弦变体 → 铜管：中速起、带通 + 中等谐振
+                3'd3: tp_of = {16'd5340,  16'd12000, 2'd1, 2'd0, 16'd17,  16'd3,  16'd20000, 16'd2  };
+                //  槽 4  三角   → 长笛 / 木管：柔和带气声
+                3'd4: tp_of = {16'd12540, 16'd20000, 2'd0, 2'd0, 16'd11,  16'd1,  16'd22000, 16'd2  };
+                //  槽 5  方波   → 电子主音：快速、尖锐、带通 + 较强谐振
+                3'd5: tp_of = {16'd16384, 16'd8000,  2'd1, 2'd0, 16'd137, 16'd7,  16'd20000, 16'd4  };
+                //  槽 6  锯齿   → 弦乐 / 贝斯：经典锯齿扫频，强谐振
+                3'd6: tp_of = {16'd4277,  16'd4000,  2'd0, 2'd0, 16'd34,  16'd3,  16'd20000, 16'd2  };
+                //  槽 7  变体   → 打击 / 拨弦：极快起、极快衰减、无持续
+                3'd7: tp_of = {16'd23170, 16'd16384, 2'd0, 2'd0, 16'd682, 16'd14, 16'd0,     16'd1  };
+                default: tp_of = {16'd30000, 16'd16384, 2'd0, 2'd0, 16'd5, 16'd20, 16'd20000, 16'd8};
+            endcase
+        end
+    endfunction
+
     genvar gi;
     generate
         for (gi = 0; gi < P; gi = gi + 1) begin : g_voice
+            // ---- CC71/72/73/74 → voice_mono 参数（按本声部的通道号取）----
+            //  64 = 中心 = 不调制（等于编译期默认值）。
+            //  f_coeff / q_coeff 用 <<8 的偏移；attack/release 用 >>1 的偏移。
+            wire [3:0]        vch   = voice_ch[gi*4 +: 4];
+            wire [6:0]        m_cut = ext_cutoff_mod[vch*7 +: 7];
+            wire [6:0]        m_res = ext_reson_mod [vch*7 +: 7];
+            wire [6:0]        m_atk = ext_attack_mod[vch*7 +: 7];
+            wire [6:0]        m_rel = ext_release_mod[vch*7 +: 7];
+
+            // ---- 按本泳道当前音色查参数表 ----
+            wire [99:0] tp        = tp_of(pf_timbre[gi*3 +: 3]);
+            wire [15:0] t_f_coeff = tp[99:84];
+            wire [15:0] t_q_coeff = tp[83:68];
+            wire [1:0]  t_ftype   = tp[67:66];
+            wire [1:0]  t_acurve  = tp[65:64];
+            wire [15:0] t_astep   = tp[63:48];
+            wire [15:0] t_dstep   = tp[47:32];
+            wire [15:0] t_slevel  = tp[31:16];
+            wire [15:0] t_rstep   = tp[15:0];
+
+            //  ⚠⚠ 2026-10-19：**三个调制的方向原来是反的**，已改成减号。
+            //     MIDI 规范：
+            //       CC71 Resonance      值越大谐振越强 → q_coeff 必须**减小**
+            //                           （SVF 里 q 是阻尼项：high = in − low − q·band）
+            //       CC73 Attack  Time   值越大起音越慢 → attack_step 必须**减小**
+            //       CC72 Release Time   值越大释放越慢 → release_step 必须**减小**
+            //       CC74 Frequency Cutoff 值越大越亮 → f_coeff 增大（**这个方向本来就对**）
+            //     之前一直没发现：上板声音是"炸"的，根本听不出滤波器松紧。
+            //     安全性：m_res=127 → q_coeff = 16384−16128 = 256（>0，不会自激）；
+            //             m_atk=127 → a_step = 5−31 → 被钳到 1（最长起音）。
+            wire signed [17:0] cut_s = $signed({2'b0, t_f_coeff}) +
+                                       (($signed({11'd0, m_cut}) - 18'sd64) <<< 8);
+            wire signed [17:0] res_s = $signed({2'b0, t_q_coeff}) -
+                                       (($signed({11'd0, m_res}) - 18'sd64) <<< 8);
+            wire signed [17:0] atk_s = $signed({2'b0, t_astep}) -
+                                       (($signed({11'd0, m_atk}) - 18'sd64) >>> 1);
+            wire signed [17:0] rel_s = $signed({2'b0, t_rstep}) -
+                                       (($signed({11'd0, m_rel}) - 18'sd64) >>> 1);
+
+            wire [15:0] f_coeff_g = (cut_s > 18'sd32767) ? 16'h7FFF : ((cut_s < 18'sd0) ? 16'd0     : cut_s[15:0]);
+            wire [15:0] q_coeff_g = (res_s > 18'sd32767) ? 16'h7FFF : ((res_s < 18'sd0) ? 16'd0     : res_s[15:0]);
+            wire [15:0] a_step_g  = (atk_s > 18'sd32767) ? 16'h7FFF : ((atk_s < 18'sd1) ? 16'd1     : atk_s[15:0]);
+            wire [15:0] r_step_g  = (rel_s > 18'sd32767) ? 16'h7FFF : ((rel_s < 18'sd1) ? 16'd1     : rel_s[15:0]);
+
+            //  ⚠ 2026-10-18：**必须插一级寄存器**。
+            //     上面这条链是"16 通道 × 7 位向量 → 变量位选择(16选1 mux) → 加减偏移 → 钳位"，
+            //     如果直接喂给 voice_mono 的 f_coeff/q_coeff，就会串在 SVF 乘法器前面 ——
+            //     实测 P&R 后最差 slack 从 −0.613 ns 恶化到 **−10.955 ns**，
+            //     违例从 210 涨到 **1804**（超标 3 倍，位流不可用）。
+            //     打一拍后这条链在寄存器处断开，SVF 前面的关键路径恢复原状。
+            //     代价：参数晚 1 个采样（62.5 µs），听感无影响。
+            reg [15:0] f_coeff_r, q_coeff_r, a_step_r, r_step_r;
+            always @(posedge clk_sys or negedge rst_n_sync) begin
+                if (!rst_n_sync) begin
+                    f_coeff_r <= def_f_coeff;
+                    q_coeff_r <= def_q_coeff;
+                    a_step_r  <= def_astep;
+                    r_step_r  <= def_rstep;
+                end else begin
+                    f_coeff_r <= f_coeff_g;
+                    q_coeff_r <= q_coeff_g;
+                    a_step_r  <= a_step_g;
+                    r_step_r  <= r_step_g;
+                end
+            end
             voice_mono u_voice (
                 .clk          (clk_sys),
                 .rst_async_n  (rst_n_sync),      // 本层只有同步复位，直接当异步输入用（模块内自己同步释放）
                 .sample_en    (slot_vld),        // 时隙节拍
+                .slot         (slot),            // 2026-10-21：4 份状态（每声部每帧推进一次）
 
                 // ---- DDS ----
                 .phase_inc    (pf_phase_inc[gi*32 +: 32]),
@@ -246,18 +437,18 @@ module full_system #(
                 .timbre_slot  (pf_timbre[gi*3 +: 3]),
 
                 // ---- SVF ----
-                .f_coeff      (def_f_coeff),
-                .q_coeff      (def_q_coeff),
-                .filter_type  (def_ftype),
+                .f_coeff      (f_coeff_r),
+                .q_coeff      (q_coeff_r),
+                .filter_type  (t_ftype),
 
                 // ---- ADSR / VCA ----
                 .gate         (pf_gate[gi]),
                 .sustain_pedal(pf_sust_pedal[gi]),
-                .adsr_curve   (def_acurve),
-                .attack_step  (def_astep),
-                .decay_step   (def_dstep),
-                .sustain_level(def_slevel),
-                .release_step (def_rstep),
+                .adsr_curve   (t_acurve),
+                .attack_step  (a_step_r),
+                .decay_step   (t_dstep),
+                .sustain_level(t_slevel),
+                .release_step (r_step_r),
                 .velocity_gain(pf_vel_gain[gi*16 +: 16]),
                 .vca_gain     (pf_vca_gain[gi*16 +: 16]),
 
@@ -270,6 +461,11 @@ module full_system #(
 
                 // ---- 输出 ----
                 .voice_out    (voice_aud[gi*24 +: 24]),
+                .dbg_wave     (voice_dbg_wave[gi*24 +: 24]),   // 仅调试探针用
+                .data_vld     (voice_data_vld[gi]),
+                .ch_in        (pf_ch[gi*4 +: 4]),
+                .data_gate    (voice_data_gate[gi]),
+                .data_ch      (voice_data_ch[gi*4 +: 4]),
 
                 // ---- 状态写回（→ 调度层）----
                 .phase_acc    (rs_phase_acc[gi*32 +: 32]),
@@ -285,6 +481,49 @@ module full_system #(
     //     —— 即**不经** `voice_mono`，这里从调度层预取寄存器直接接到 full_top。
     assign voice_ch  = pf_ch;
     assign voice_vld = pf_gate;
+
+    //  8 条泳道共用同一条波表流水（wave_fetch 的 rdy 是全局的），
+    //  所以它们的 data_vld 完全相同，取或即可。
+    assign voice_data_vld_any = |voice_data_vld;
+
+    // ========================================================================
+    // 调试 LED（2026-10-12 加，用于上板排查音色映射与测延迟）
+    //
+    //  dbg_led[2:0] ← 泳道 0 的 timbre_slot（即 pf_timbre[2:0]）
+    //      发 `pc 0` ~ `pc 7`，这 3 个灯应出现 8 种不同组合。
+    //      · 灯变、声音不变 → 映射正常，问题在波表/音频链
+    //      · 灯完全不变     → 综合把它优化掉了，或映射没走到
+    //
+    //  dbg_led[3] ← 声部激活（pf_gate 任一为 1）的上升沿，展宽 40 ms
+    //      接示波器可测"Note On → 音频输出"的延迟（基础 ≤10ms / 拓展 ≤5ms 那个指标）。
+    //
+    //  ⚠ 这三个音色位会随演奏闪烁，属正常现象；正式演示时可在 .cst 里注释掉。
+    //
+    //  ⚠ 极性：**板上 LED 低电平点亮**（依据 board/i2s_test/i2s_test.v 的注释与
+    //     其它测试工程里 `assign led = ~cnt[...]` 的写法）。所以下面的输出都取反了。
+    //     若将来换板子，先确认极性再改这里。
+    // ========================================================================
+    //  ⚠ 板上 LED 是**低电平点亮**（见 board/i2s_test/i2s_test.v 的注释），故取反。
+    assign dbg_led[2:0] = ~pf_timbre[2:0];         // 泳道 0 的音色槽（低电平点亮 → 取反）
+
+    reg  [21:0] dbg_evt_cnt;
+    reg         dbg_gate_d;
+    wire        dbg_gate_any = |pf_gate;
+    wire        dbg_rise     = dbg_gate_any & ~dbg_gate_d;
+
+    always @(posedge clk_sys or negedge rst_n_sync) begin
+        if (!rst_n_sync) begin
+            dbg_gate_d  <= 1'b0;
+            dbg_evt_cnt <= 22'd0;
+        end else begin
+            dbg_gate_d <= dbg_gate_any;
+            // 49.152 MHz × 40 ms ≈ 1.97e6，取 2e6（约 40.7 ms）
+            if (dbg_rise)                  dbg_evt_cnt <= 22'd2_000_000;
+            else if (dbg_evt_cnt != 22'd0) dbg_evt_cnt <= dbg_evt_cnt - 22'd1;
+        end
+    end
+
+    assign dbg_led[3] = ~(dbg_evt_cnt != 22'd0);      // 同上，低电平点亮
 
 endmodule
 `default_nettype wire

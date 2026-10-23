@@ -79,6 +79,7 @@ module tb_dds_voice;
 
     dds_voice u_dds (
         .clk (clk), .rst_n_sync (rst_n_sync), .sample_en (sample_en),
+        .slot (2'd0),
         .phase_inc (phase_inc), .wave_sel (2'd0), .timbre_slot (timbre_slot),
         .tab_n (tab_n), .tab_n1 (tab_n1), .samples_rdy (samples_rdy),
         .phase_acc (phase_acc), .wave_out (wave_out),

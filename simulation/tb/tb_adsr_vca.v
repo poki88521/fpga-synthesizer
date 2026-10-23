@@ -49,6 +49,7 @@ module tb_adsr_vca;
 
     adsr_vca u_adsr (
         .clk (clk), .rst_n_sync (rst_n_sync), .sample_en (sample_en),
+        .slot (2'd0),
         .audio_in (audio_in), .gate (gate), .sustain_pedal (sustain_pedal),
         .adsr_curve (adsr_curve),
         .attack_step (attack_step), .decay_step (decay_step),

@@ -144,7 +144,10 @@ module tb_chan_table;
         chk(rd_volume         == 7'd100, "volume = 100（复位默认值）");
         chk(rd_pan            == 7'd64,  "pan = 64（居中）");
         chk(rd_note_count     == 6'd0, "note_count = 0");
-        chk(rd_bend_ratio     == 16'd0, "bend_ratio = 0 (未设过弯音)");
+        //  ⚠ 2026-10-16 更正：原来断言复位后 bend_ratio == 0，**那正是被修掉的 bug**。
+//     bend_ratio 是 Q2.14 的"音高倍数"，0 表示 ×0 = 完全无声（会把整条链弄哑）。
+//     正确复位值 = 16384（Q2.14 的 1.0）。见 chan_table.v 的复位段与开头定标说明。
+chk(rd_bend_ratio     == 16'd16384, "bend_ratio = 16384 (Q2.14 的 1.0，复位默认不弯音)");
 
         //======================================================== ②③ 提交 + 双缓冲
         $display("== 2. CC write -> submit -> visible ==");

@@ -36,6 +36,7 @@ module tb_svf_voice;
 
     svf_voice u_svf (
         .clk (clk), .rst_n_sync (rst_n_sync), .sample_en (sample_en),
+        .slot (2'd0),
         .audio_in (audio_in), .f_coeff (f_coeff), .q_coeff (q_coeff),
         .filter_type (filter_type), .audio_out (audio_out),
         .filter_ic1 (filter_ic1), .filter_ic2 (filter_ic2)
@@ -118,7 +119,9 @@ module tb_svf_voice;
             while (ph !== 4'd0) @(negedge clk);
             audio_in = din;
             ref_step(din);
-            @(posedge clk);
+            //  ⚠ 2026-10-18：SVF 改成 4 级流水（修时序违例），
+            //     输出比原来晚 3 拍，采样点随之顺延。数学未变，参考模型无需改。
+            repeat (4) @(posedge clk);
             #1;
             if (audio_out !== r_out) begin
                 cmp_err = cmp_err + 1;

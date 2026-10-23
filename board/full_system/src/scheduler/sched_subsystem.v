@@ -57,6 +57,12 @@ module sched_subsystem #(
     output wire [NCH*7-1:0]  ext_send_cho,
     output wire [NCH*7-1:0]  ext_send_del,
 
+    // ——— 通道级实时音色调制（CC71/72/73/74）；64 = 中心（等于默认值）———
+    output wire [NCH*7-1:0]  ext_attack_mod,
+    output wire [NCH*7-1:0]  ext_release_mod,
+    output wire [NCH*7-1:0]  ext_reson_mod,
+    output wire [NCH*7-1:0]  ext_cutoff_mod,
+
     // ---- → 单声部层（P 组预取参数，时隙开始前稳定）----
     //      pf_vld 是"预取寄存器已更新"的单拍脉冲（P 组同时更新），不是每泳道一位；
     //      哪个泳道有效看 pf_gate。
@@ -114,6 +120,8 @@ module sched_subsystem #(
     wire        f_msg_ack;
 
     wire        ev_note, ev_note_on, ev_cc_wr, ev_pc, ev_par_wr, drop_vld;
+    wire [1:0]  ev_cc_action;              // CC120/123 全音关
+    wire [3:0]  ev_cc_action_ch;
     wire [3:0]  ev_note_ch, ev_cc_ch, ev_pc_ch, ev_par_idx;
     wire [4:0]  ev_cc_field;
     wire [6:0]  ev_note_key, ev_note_vel, ev_pc_prog;
@@ -159,6 +167,7 @@ module sched_subsystem #(
         .ev_note(ev_note), .ev_note_on(ev_note_on), .ev_note_ch(ev_note_ch),
         .ev_note_key(ev_note_key), .ev_note_vel(ev_note_vel),
         .ev_cc_wr(ev_cc_wr), .ev_cc_ch(ev_cc_ch), .ev_cc_field(ev_cc_field), .ev_cc_val(ev_cc_val),
+        .ev_cc_action(ev_cc_action), .ev_cc_action_ch(ev_cc_action_ch),
         .ev_pc(ev_pc), .ev_pc_ch(ev_pc_ch), .ev_pc_prog(ev_pc_prog),
         .ev_par_wr(ev_par_wr), .ev_par_grp(ev_par_grp), .ev_par_idx(ev_par_idx),
         .ev_par_data(ev_par_data), .drop_vld(drop_vld)
@@ -185,6 +194,20 @@ module sched_subsystem #(
 
     wire [3:0]  cps_scan_ch;
     wire [NCH-1:0] ch_sust_pedal_bus;
+    wire [NCH*16-1:0] ch_bend_ratio_bus;    // 每通道弯音比，影子模块产出
+    wire [NCH*16-1:0] ch_vib_ratio_bus;     // 每通道颤音比，ch_lfo 产出
+    reg  [NCH*7-1:0]  mod_wheel_reg;        // 每通道调制轮（CC1）
+
+    //  ⚠ mod_wheel 不进 chan_table（那个表已占满 182 位，扩宽会牵动 apply_field /
+    //     双缓冲拷贝 / tb_chan_table 的宽度断言）。改为从事件流里直接截获：
+    //     midi_filter 把 CC1 映射到保留字段 17，chan_table 对该字段无动作（default 分支），
+    //     这里看到 field==17 就存进自己的寄存器组。
+    always @(posedge clk or negedge rst_n_sync) begin
+        if (!rst_n_sync)
+            mod_wheel_reg <= {NCH*7{1'b0}};
+        else if (ev_cc_wr && (ev_cc_field == 5'd17))
+            mod_wheel_reg[ev_cc_ch*7 +: 7] <= ev_cc_val[6:0];
+    end
 
     // 分配器写回通道表的 note_count（直接写当前 bank）
     wire        va_nc_wr; wire [3:0] va_nc_ch; wire [5:0] va_nc_val;
@@ -236,10 +259,31 @@ module sched_subsystem #(
         .rd_send_chorus (prd_scho      [0*7  +: 7 ]),
         .rd_send_delay  (prd_sdel      [0*7  +: 7 ]),
         .rd_sustain_pedal(prd_sust_pedal[0]),
+        .rd_attack_mod (ct_attack),
+        .rd_release_mod(ct_release),
+        .rd_resonance_mod(ct_reson),
+        .rd_cutoff_mod (ct_cutoff),
         .ext_volume(ext_volume), .ext_expression(ext_expression),
         .ext_pan_gL(ext_pan_gL), .ext_pan_gR(ext_pan_gR),
         .ext_send_rev(ext_send_rev), .ext_send_cho(ext_send_cho), .ext_send_del(ext_send_del),
-        .ch_sust_pedal(ch_sust_pedal_bus)
+        .ch_sust_pedal(ch_sust_pedal_bus),
+        .rd_bend_ratio(ct_bend_ratio),
+        .ch_bend_ratio(ch_bend_ratio_bus),
+        .ext_attack_mod(ext_attack_mod),
+        .ext_release_mod(ext_release_mod),
+        .ext_reson_mod(ext_reson_mod),
+        .ext_cutoff_mod(ext_cutoff_mod)
+    );
+
+    //========================================================================
+    // 每通道颤音 LFO（三角波，48 kHz 推进）
+    //   输出 ch_vib_ratio 与 ch_bend_ratio 同形态，voice_fetch 预取时合成总倍率
+    //   数据源 mod_wheel_reg 由上方事件流截获（CC1 → 字段 17）
+    //========================================================================
+    ch_lfo #(.NCH(NCH)) u_lfo (
+        .clk(clk), .rst_n_sync(rst_n_sync), .frame_stb(frame_stb),
+        .mod_wheel(mod_wheel_reg),
+        .ch_vib_ratio(ch_vib_ratio_bus)
     );
 
     //========================================================================
@@ -249,7 +293,7 @@ module sched_subsystem #(
         .clk(clk), .rst_n_sync(rst_n_sync), .frame_stb(frame_stb),
         .ev_note(ev_note), .ev_note_on(ev_note_on), .ev_note_ch(ev_note_ch),
         .ev_note_key(ev_note_key), .ev_note_vel(ev_note_vel),
-        .cc_action(2'd0), .cc_ch(4'd0),
+        .cc_action(ev_cc_action), .cc_ch(ev_cc_action_ch),
         .ch_rd_addr(ct_rd_ch), .ch_max_voices(ct_max_voices),
         //  ⚠ 2026-10-09：把该通道的 bank_msb / program 一起给分配器，
         //     供它内部的 timbre_map 决定音色槽（原先直接用 note[2:0]，
@@ -374,6 +418,8 @@ module sched_subsystem #(
         .rs_wr(wb_wr), .rs_id(wb_id), .rs_data(wb_data),
         .scan_addr(va_scan_addr), .scan_req(va_scan_req), .scan_env_state(vf_scan_env_state),
         .ch_sust_pedal(ch_sust_pedal_bus),
+        .ch_bend_ratio(ch_bend_ratio_bus),
+        .ch_vib_ratio(ch_vib_ratio_bus),
         .pf_phase_inc(pf_phase_inc), .pf_timbre(pf_timbre), .pf_note(pf_note),
         .pf_vel_gain(pf_vel_gain), .pf_vca_gain(pf_vca_gain), .pf_ch(pf_ch),
         .pf_gate(pf_gate), .pf_fast_rel(pf_fast_rel),
@@ -403,8 +449,8 @@ module sched_subsystem #(
     // 调试用（未使用信号的占位，避免综合告警）
     wire _unused = |{p_msg_drop, p_msg_ovf, p_frame_err, p_sx_err,
                      ct_wr_ovf, ct_dumping, ct_fifo_empty, drop_vld, ev_par_wr,
-                     va_evt_dout, va_evt_full, ct_bend_ratio, ct_bend_value,
-                     ct_bend_range, ct_attack, ct_release, ct_reson, ct_cutoff,
+                     va_evt_dout, va_evt_full, ct_bend_value,
+                     ct_bend_range,
                      ct_volume, ct_pan, ct_expression, ct_program,
                      ct_bank_msb, ct_bank_lsb, ct_pan_gL, ct_pan_gR,
                      ct_default_timbre, ct_note_count, ct_sust, ct_sost,

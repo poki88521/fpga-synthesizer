@@ -45,6 +45,8 @@ module midi_filter (
     output reg  [3:0]  ev_cc_ch,
     output reg  [4:0]  ev_cc_field,      // field_id（§三.三.3）
     output reg  [15:0] ev_cc_val,
+    output reg  [1:0]  ev_cc_action,      // 1=CC120 全音关(直断) 2=CC123 全音符关(走 RELEASE)
+    output reg  [3:0]  ev_cc_action_ch,
 
     // ——— Program Change → chan_table / timbre_map ———
     output reg         ev_pc,
@@ -101,6 +103,8 @@ module midi_filter (
                 7'd91 : cc2field = F_SEND_REV;
                 7'd93 : cc2field = F_SEND_CHO;
                 7'd94 : cc2field = F_SEND_DEL;
+    7'd1  : cc2field = 5'd17;              // CC1 调制轮 → 保留字段 17（chan_table 会忽略，
+                                           //   sched_subsystem 从事件流里截获存入 mod_wheel 寄存器组）
                 default: cc2field = F_NONE;      // 未列出的 CC → 忽略
             endcase
         end
@@ -153,6 +157,8 @@ module midi_filter (
             ev_cc_ch     <= 4'd0;
             ev_cc_field  <= 5'd0;
             ev_cc_val    <= 16'd0;
+            ev_cc_action    <= 2'd0;
+            ev_cc_action_ch <= 4'd0;
             ev_pc        <= 1'b0;
             ev_pc_ch     <= 4'd0;
             ev_pc_prog   <= 7'd0;
@@ -166,6 +172,7 @@ module midi_filter (
             msg_ack   <= 1'b0;
             ev_note   <= 1'b0;
             ev_cc_wr  <= 1'b0;
+            ev_cc_action <= 2'd0;
             ev_pc     <= 1'b0;
             ev_par_wr <= 1'b0;
             drop_vld  <= 1'b0;
@@ -206,6 +213,16 @@ module midi_filter (
                                 ev_cc_field <= F_BEND_RANGE;
                                 ev_cc_val   <= {9'd0, m_val7};
                             end
+                        end
+                        else if (m_cc == 7'd120) begin
+                            // All Sound Off：立即断音
+                            ev_cc_action    <= 2'd1;
+                            ev_cc_action_ch <= m_ch;
+                        end
+                        else if (m_cc == 7'd123) begin
+                            // All Notes Off：走 RELEASE（更自然，不留爆音）
+                            ev_cc_action    <= 2'd2;
+                            ev_cc_action_ch <= m_ch;
                         end
                         else if (m_fld != F_NONE) begin
                             ev_cc_wr    <= 1'b1;

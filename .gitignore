@@ -61,3 +61,10 @@ board/full_system/data/
 #      等新流程定下来后要把这个依赖一并解决。
 /wave_table/*
 !/wave_table/.gitkeep
+# ---------------------------- 2026-10-23 追加 ----------------------------
+# 仿真波形（每次跑 TB 都会生成，体积大）
+*.vcd
+# agent 探针 dump（tb_*_probe 的输出，可重新生成）
+scratch/agent/probe_*.txt
+# 事故/损坏文件（*.bak 匹配不到这类后缀）
+*.bak_*

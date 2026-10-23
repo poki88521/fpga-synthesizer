@@ -33,3 +33,11 @@ set_false_path -to [get_ports {PA_EN}]
 // MS5351 的 I2C：开漏慢速总线（100 kHz），按 false path 处理
 set_false_path -from [get_ports {scl}]
 set_false_path -from [get_ports {sda}]
+
+//============================================================================
+//  调试 LED（2026-10-15 补）
+//  dbg_led[2:0] = 泳道0 的 timbre_slot（寄存器直出）
+//  dbg_led[3]   = ~(|dbg_evt_cnt) —— 22 位计数器归零比较
+//  都是慢速调试信号，人为收敛输出延迟没有意义，且会白占时序余量。
+//============================================================================
+set_false_path -to [get_ports {dbg_led[*]}]

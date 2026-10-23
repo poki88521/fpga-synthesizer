@@ -193,7 +193,12 @@ module fx_reverb #(
     //    ⚠ 若将来把 AW 或系数位宽加大（例如 AW=32 或 damp 用 Q1.31），
     //      这个上界就不再成立，必须同步加宽，否则静默回绕。
     wire signed [AW+15:0] fs_new_p = $signed(m0) * oned + fsc * damp;
-    wire signed [AW-1:0]  fs_new   = sat24({{(48-(AW+16)){fs_new_p[AW+15]}}, fs_new_p} >>> 15);
+    //  ⚠ 2026-10-14 修正：**位拼接在 Verilog 里永远是无符号的**，直接喂给 `>>>` 会让
+    //     整个表达式变无符号 → 算术右移退化成逻辑右移（补 0）→ 负数变成巨大正数再饱和。
+    //     与 chan_layer.v 是同一类 bug（那边现象：ch_l 恒为 [0, 8388607]、力度差异被抹平）。
+    //     正确做法：先赋给 signed wire 做符号扩展，再移位。
+    wire signed [47:0]    fs_new_x = {{(48-(AW+16)){fs_new_p[AW+15]}}, fs_new_p};
+    wire signed [AW-1:0]  fs_new   = sat24(fs_new_x >>> 15);
     // ⚠ Q1.15 乘法之后必须先 >>>15 再相加。
     //   **不能**写成 ({{(48-(AW+16)){p[AW+15]}}, p} >>> 15)：那句的移位量是
     //   48-(24+16)=8 位符号 + 40 位乘积 = 48 位，>>>15 后只剩低 33 位有效，
@@ -265,9 +270,16 @@ module fx_reverb #(
             case (st)
                 ST_IDLE: begin
                     if (in_vld) begin
-                        // 输入增益
-                        bl <= sat24(($signed(bus_l) * size) >>> 15);
-                        br <= sat24(($signed(bus_r) * size) >>> 15);
+                        // ⚠⚠ 2026-10-22 修"炸"（内部硬削顶）：
+                        //   8 条梳状并联、反馈 decay=0.946 ⇒ 单条 DC 增益 1/(1−0.946)≈18.5，
+                        //   8 条**直接相加**（comb_sum_n 没有除 8）⇒ 内部节点达到 5.2 倍满量程，
+                        //   被 ap_x 处的 sat24 每帧钳位 ~700 拍，输出就成了"炸"，而且
+                        //   钳位值写回延迟线后尾巴永不衰减（实测关声后 RMS 恒定 18.6%FS）。
+                        //   修法：梳状输入除以 256（>>> 15 改成 >>> 23）。按**满量程输入**留余量：
+                        //   ÷16:内部 1.59×FS/削顶 4.3 拍每帧；÷32:1.06×FS 但发送 127 时又到 1.27×FS（上板仍炸）；\n                        //   ÷256 后满量程输入下内部约 0.53×FS，零削顶；湿声靠 reverb_return=32767 拉满（见 full_top.v）。
+                        //   原写法备份：scratch\backup\20261022_combscale_before__*_fx_reverb.v
+                        bl <= sat24(($signed(bus_l) * size) >>> 23);
+                        br <= sat24(($signed(bus_r) * size) >>> 23);
                         ch <= 1'b0; li <= 4'd0;
                         comb_sum <= 48'sd0;
                         st <= ST_RD;

@@ -59,15 +59,49 @@ module voice_slot_seq #(
 
     //  ⚠ 组合块**开头必须给所有被驱动信号的默认值**（否则综合会推 latch）。
     //    这里是标准写法：先给默认，再按条件覆盖。
+    //  ⚠⚠ 2026-10-18：**输出必须寄存一拍**。
+    //     原来 `slot_vld` / `slot` 直接由 `cyc`（11 位计数器）组合解码输出 ——
+    //     等于"11 位计数器 → 4 路比较器 → 全系统几百个使能端"，
+    //     P&R 实测最差的 25 条路径**全部**从 `cyc` 的某一位出发，
+    //     终点分散到 voice_fetch / fx_delay / midi_parse 等各处 —— 这就是全局 Fmax 的瓶颈。
+    //
+    //     改成：组合解码只驱动 2 个寄存器（扇出极小），
+    //     再由寄存器输出驱动下游（布线器可以插缓冲树）。
+    //
+    //     副作用：slot/slot_vld 整体晚 1 拍。帧内有 1024 拍，浪费 1 拍无影响；
+    //     两个 voice_slot_seq 实例（full_top 与 sched_subsystem）都由同一个
+    //     frame_stb 复位，延迟相同 → 仍然同相。
+    //     chan_layer 的 slot_cnt 由 frame_stb 复位、slot_vld 递增，相对关系不变。
+    reg [SW-1:0] slot_c;
+    reg          slot_vld_c;
+
     always @(*) begin
-        slot_vld = 1'b0;
-        slot     = {SW{1'b0}};
+        slot_vld_c = 1'b0;
+        slot_c     = {SW{1'b0}};
         for (k = 0; k < G; k = k + 1) begin
             // 目标拍号 = 1 + k*STRIDE；写成常量比较，综合成比较器树
             if (cyc == (1 + k*STRIDE)) begin
-                slot_vld = 1'b1;
-                slot     = k[SW-1:0];
+                slot_vld_c = 1'b1;
+                slot_c     = k[SW-1:0];
             end
+        end
+    end
+
+    //  ⚠⚠ 2026-10-19：`slot` 必须**保持住**上一个时隙号，不能回落到 0。
+    //     原因：声部音频有约 23 拍的流水延迟（波表扫描 17 拍 + SVF 4 级），
+    //     上游 chan_buf 是在**延迟 23 拍之后**才采样的。
+    //     如果 slot 在脉冲后回落成 0，那时读到的永远是 0
+    //     → 4 个时隙的数据全写进 slot 0 的地址 → 只有 1/4 的声部拿得到数据。
+    //     （实测症状：峰峰值只有 ±1，几乎无声。）
+    //     改成"只在脉冲时更新，其余时间保持"后，延迟采样时 slot 仍是正确的当前时隙号。
+    //     ⚠ voice_fetch 用的 nslot 是在脉冲当拍组合计算的，语义不变。
+    always @(posedge clk or negedge rst_n_sync) begin
+        if (!rst_n_sync) begin
+            slot     <= {SW{1'b0}};
+            slot_vld <= 1'b0;
+        end else begin
+            slot_vld <= slot_vld_c;
+            if (slot_vld_c) slot <= slot_c;   // 只有脉冲时才更新，否则保持
         end
     end
 

@@ -1,0 +1,17 @@
+<?xml version="1" encoding="UTF-8"?>
+<!DOCTYPE gowin-fpga-project>
+<Project>
+    <Template>FPGA</Template>
+    <Version>5</Version>
+    <Device name="GW5AST-138B" pn="GW5AST-LV138FPG676AC1/I0">gw5ast138b-007</Device>
+    <FileList>
+        <File path="src/fake_audio_gen.v" type="file.verilog" enable="1"/>
+        <File path="src/lcd_800x480.v" type="file.verilog" enable="1"/>
+        <File path="src/pll_pixel.v" type="file.verilog" enable="1"/>
+        <File path="src/vis_audio.v" type="file.verilog" enable="1"/>
+        <File path="src/vis_standalone.v" type="file.verilog" enable="1"/>
+        <File path="src/wave_render.v" type="file.verilog" enable="1"/>
+        <File path="src/vis_standalone.cst" type="file.cst" enable="1"/>
+        <File path="src/vis_standalone.sdc" type="file.sdc" enable="1"/>
+    </FileList>
+</Project>

@@ -1,0 +1,433 @@
+# agent 工作笔记（持续更新）
+
+## ★★★ "炸"已修好（2026-10-23 上板确认）
+
+**根因：混响 `fx_reverb` 内部 8 条梳状滤波器输出直接相加、没有缩放，
+内部节点达到 5.2 倍满量程，被 `sat24` 每帧钳位 706 拍 → 削顶失真；
+钳位值又写回延迟线，于是尾巴永不衰减（对应"等 10 秒不衰减"）。**
+
+```
+诊断过程（关键：先用仿真把范围缩小）
+  ① 上板：CC11 127→8（−24 dB）音量变小但"炸"的质感不变
+     ⇒ 排除削波/电平相关 ⇒ 是"与幅度无关"的形状类失真
+     （后来才知道：交接文档里"CC7=2 也炸 ⇒ 与音量无关"这条无效——
+       midi_filter.v:139 里 CC7/10/91/93/94 只在 port3（A17 混音口）生效，
+       乐器口 C21 上直接被丢弃，那几次测试音量从未变过）
+  ② 仿真（新增 tb_slot_probe 的 dump + 新建 tb_chain_probe）证明
+     **声部层 + 通道层 + 主混音（干路）是干净的**：
+        声部 voice_out：1F 263.2 / 2F −16.2 / 3F −27.0 dB，非谐波 −42 dB，撞 sat24 0 次
+        干路 main_l ：峰峰 53.3%FS、**跳变 0 次**、4F −8.3 dB（钢琴表理论 −8.8 dB，吻合）
+     ⇒ "炸"只能在效果器（TB 里 FX 输入接 0，等于没测）
+  ③ 上板对比 A/B：同一个持续音，只改 CC91/93/94
+     a.csv（效果器开）最强峰 738 Hz、RMS(Δ)=2.10 V
+     b.csv（效果器关）最强峰 **261.7 Hz**、RMS(Δ)=1.19 V
+     ⇒ 高频是效果器造出来的；且"关掉效果器 = 正常" ✔
+  ④ 单路隔离：CC91 单走最大 → 炸；CC93/94 最大 → 只有很轻的影响
+     ⇒ 主因是混响
+  ⑤ 混响探针 tb_reverb_probe（262 Hz 正弦 + 实板参数）定量复现并定标：
+     >>>15  内部 5.20×FS 削顶 706.6 拍/帧 最强峰 5670 Hz 尾巴恒定 18.6%FS
+     >>>19  内部 1.59×FS 削顶   4.3 拍/帧
+     >>>20  内部 1.06×FS 削顶   0.1 拍/帧 最强峰 262.5 Hz（但发送 127 时又回到 1.27→上板仍炸）
+     >>>23  内部 0.45×FS 削顶   0.0 拍/帧 ret 44.8%FS 尾巴单调衰减（T60≈3s）★ 采用
+```
+
+**最终改动（2 处，已上板验证"炸"消失）**
+
+```
+rtl/global/fx_reverb.v   L281/282   (bus*size) >>> 15  →  >>> 23     梳状网络输入 ÷256
+rtl/top/full_top.v       L531       reverb_return 16000 → 32767      补回湿声电平
+```
+`board/full_system/src` 已同步；备份见 `scratch/backup/`（三套状态：÷15 / ÷32 / ÷256）。
+
+**遗留（已知、轻微）**
+```
+· CC91（混响发送）拉到 127 时仍有轻微失真：湿声 44.8%FS + 干路 0.6 FS ≈ 1.05 FS
+  → 是 main_mix 的 sat24 在削。一行可解：reverb_return 32767 → 26000（湿声降到 0.36）
+· fx_delay 有同类"轻症"：p_fb=22000(0.67) ⇒ 反馈环稳态增益 ≈3 倍，
+  wdata <= sat24(wl_n) 在输入 >0.33 FS 时开始削顶（对应"CC94 最大有一点影响"）
+  → 解法：wdata 除以 2 后再读回补偿，或 p_fb 降到 15000
+· fx_chorus 没问题（交叉淡化，输出 ≤ max(bus,wet)）
+```
+
+**用户结论：修好了，只剩 CC91 开到最大有轻微失真。**
+
+---
+
+> 本文件是 agent 自己的工作记忆，**取代** `交接文档_20261021.md` 里的结论部分
+> （那份文档对"炸"的根因判断已被实测证伪：根因不是 `samples_rdy` 次数）。
+> 最后更新：2026-10-21 20:24
+
+---
+
+## 0. 一句话现状
+
+`炸` 的主机制（音高精确 2 倍 + 波表非谐波分量）**已修**，声部层的结构性缺陷
+（波表槽/参数差一个时隙、4 声部共用状态、包络站不住）**已在 RTL 修完并通过全部
+仿真回归**，等重新综合+P&R 后上板验证。
+
+---
+
+## 1. 当前 RTL 状态（2026-10-21 这一轮改动）
+
+| 文件 | 改了什么 |
+|---|---|
+| `rtl/voice/dds_voice.v` | ① `timbre_r` 在 `dds_en` 沿锁存后再拼地址；② `phase_acc` → `phase_r[0:3]`（按 `slot` 选）；③ 新增 `slot` 输入，`phase_acc` 输出改为 wire |
+| `rtl/voice/svf_voice.v` | `low/band` → `low_r[0:3]/band_r[0:3]`；流水相位 0 锁存 `s1_slot`，相位 3 写回同一份；新增 `slot` 输入 |
+| `rtl/voice/adsr_vca.v` | `env_value/env_state` → `env_r[0:3]/st_r[0:3]`；这两个名字保留为"当前时隙那份"的组合读，**组合逻辑一行未改**；新增 `slot` 输入 |
+| `rtl/voice/voice_mono.v` | ① 新增 `slot` 端口并下传三级；② 新增 134 bit **时隙参数锁存**（f/q/ftype/ADSR 四步长/slevel/velgain/vcagain/sust），SVF 与 ADSR 改用锁存值；③ ADSR 的 `gate` 改用 `data_gate_r`（`dds_en` 沿锁存） |
+| `rtl/top/full_system.v` | `voice_mono` 接 `.slot(slot)` |
+
+**数据文件**：`board/full_system/data/wave_table.hex` 与 `wave_table/out/wave_table.hex`
+已替换为"每槽严格 1 个周期"的新表（见 §2.1），两者 SHA256 相同。
+
+**新增工具**（都在 `wave_table/`）：
+```
+rebuild_wave_table.py   重建波表（--write 写盘 / --verify 回读校验 / 默认 dry-run）
+analyze_periods.py      逐槽判断"2048 点里有几个周期"
+verify_rom_init.py      解码综合网表 pROM 的 INIT_RAM，逐位核对位流里的波表
+```
+
+**新增测试台**：
+```
+simulation/tb/tb_wave_pitch.v   波表+DDS 音高专项（1x / 2x 判定），1000 帧≈10 s 仿真
+simulation/tb/tb_slot_probe.v   时隙/预取时序探针（pf_gate vs 锁存 gate、每帧包络步数）
+```
+
+**为接新端口而改过的旧 TB**（各加了一行 `.slot(2'd0)`）：
+`tb_svf_voice.v`、`tb_adsr_vca.v`、`tb_dds_voice.v`、`tb_voice_mono.v`、`tb_wave_real.v`；
+其中 `tb_voice_mono.v` 还有一处层次赋值改成 `u_dds.phase_r[0]`（`phase_acc` 已是 wire）。
+
+---
+
+## 2. 已验证的结论（带数字，别再重复查）
+
+### 2.1 2 倍音高的根因 = 波表数据，不是 `samples_rdy`
+
+```text
+DDS 口径：idx = phase_acc[31:21]（11 位 = 2048 点）走完一个相位周期
+          → 每槽必须恰好 1 个波形周期
+实测（majiao 源文件与烧录表逐位一致）：
+  slot0 钢琴    bin2 占 82.3%  → 2 周期  → 输出 2x
+  slot1 吉他    bin2 占 96.6%  → 2 周期  → 2x
+  slot2 管风琴  bin1~4 各约 25% → 1 周期 ✓（注意：最强 bin 是 bin3(25.55%)，
+                                      按"最强 bin"判会误判成 3 周期，会把好槽做坏）
+  slot3 长笛    bin1 占 98.2%   → 1 周期 ✓
+  slot4~7 旧合成波（三角/方/锯齿）→ 1 周期 ✓
+判据（别只看最强 bin）：
+  半周期自相关 r(1024) > 0 且"P 倍数 bin 能量 > 75%" 才算 P 周期
+  · 真 2 周期          → r(1024) 为正（piano +0.33 / guitar +0.47）
+  · 1 周期 + 强 2 次谐波 → r(1024) 必为负（锯齿 -1、方波 -1）
+算术对账：phase_inc(60)=23409859 → 每帧 11.16 个表点 → 3.82 ms 扫完 2048 点
+          = 261.6 Hz；表里有 2 个周期 → 523 Hz（实板实测 524.5 / 2100 ✓）
+DDS 行为模型复现：旧表 slot0 → 523.00 Hz，新表 → 262.00 Hz
+```
+
+重建后的槽内容（用于判断"音色为什么变薄"）：
+```
+slot0 钢琴：基频 85.7% + 4 次谐波 13.3%   （原 12.8% 的非谐波 bin7 并入最近谐波）
+slot1 吉他：基频 97.3% + 2 次谐波 2.4%
+```
+
+### 2.2 `samples_rdy` 每帧 4 次是**设计使然**
+
+每帧 4 个时隙（`slot_vld` 在 `cyc=1/33/65/97`，`STRIDE=32`），`wave_fetch` 每时隙扫
+一次 2P 地址 → 每帧 4 次 `rdy`。**不能改成 1 次**，否则 3 个时隙的 24 个声部拿不到数据
+（`full_system.v` 的注释里记着 STRIDE=8 时的这个旧故障）。
+
+### 2.3 声部层的结构性缺陷（这轮修掉的）
+
+```text
+① voice_fetch 预取语义：slot_vld 那拍把 pf_* 换成**下一时隙**的声部
+   · phase_inc 由 dds_voice 在沿前采样        → 属于声部 g ✓
+   · 波表地址在 start_d（沿后）才锁          → 原来取到声部 g+1 ✗（已用 timbre_r 修）
+   · SVF/ADSR 使能在 rdy_d1 / rdy_d4（十几拍后）→ 原来全是声部 g+1 ✗（已用参数锁存修）
+② 一条泳道只有一套 phase/svf/env 状态，却要服务 4 个声部 → 已拆成 4 份（按 slot 索引）
+③ 包络站不住的机制（探针实测）：ADSR 每帧被推进 4 次，其中 3 次 gate=0
+   → SUSTAIN 里立刻判"松键"进 RELEASE → 任何音都是"一击+长尾"
+   修后：slot0 env 6000→9000→12000（每帧 +1 步），slot1/2/3 各自独立
+```
+
+### 2.4 位流里确实带着新波表（可复用）
+
+综合后 `impl/gwsynthesis/full_system.vg` 里波表被推断成 16 个 `pROM`（每位一个），
+带 `INIT_RAM_00..3F`。`verify_rom_init.py` 按"bit i = 地址 i、缺失块=全零"解码比对：
+
+```text
+2026-10-21 17:35 那次构建：16384 地址 × 16 位 全部一致  PASS
+```
+
+⚠ **高云对全零的 `INIT_RAM` 块不生成 `defparam`**（默认即 0）。按"缺失=错"判会误报。
+
+---
+
+## 3. 仿真回归状态（改完全部通过）
+
+### 3.0 ⚠ 2026-10-21 晚：上板"完全没声音"的两个根因 + 修复
+
+现象：烧 21:32 那版位流后**正常模式全静音**，`变音色/音高/响度` 都无声，
+但**测试模式正常**（测试模式注入在 `voice_aud`，不走声部层 → 说明通道/效果/DAC 链路是好的）。
+
+根因是**两个"差一拍"的使能错位**。它们在旧代码里也存在，但那时 4 个时隙共用一套状态，
+"上一拍的值"仍是同一个音的值，所以听不出来；**方案 A 让每时隙状态独立之后，它们变成
+"取到别的声部的 0"，于是全静音**：
+
+```
+① chan_buf 与 VCA 输出错位
+   adsr_vca 在 sample_en(=vca_en) 的**时钟沿**才把结果写进 audio_out，
+   而 voice_mono 原来 `assign data_vld = vca_en;` → chan_buf 在同一沿采样，
+   拿到的是**上一个时隙**的音频。
+   修：data_vld 后移 1 拍（data_vld_r <= vca_en）。
+② VCA 与 SVF 输出错位
+   svf_voice 的 4 级流水在 rdy_d1 启动，在 rdy_d1+3 的沿才写 audio_out，
+   即 **rdy_d5** 才有效；而 vca_en 原来是 rdy_d4，早一拍 → VCA 乘到上一时隙的滤波结果。
+   修：vca_en = rdy_d5（新增 rdy_d5 寄存器）。
+```
+
+**诊断过程（可复用）**：在探针 TB 里逐拍打印
+`slot / rdy / rdy_d1 / rdy_d5 / data_vld / env / svf_out / vca_sat / audio_out`，
+一眼就能看到"`d5=1` 那拍 `env=0`、下一拍 `env` 才变"和"`sat` 算对了但 `audio_out` 没跟上"。
+
+**注意**：探针只跑 8 帧会误判成"仍然全零"——那时包络还在起音的最初 2 帧里。
+必须跑到 100+ 帧再统计。实测 200 帧：`gate=1 的 data_vld = 198 次，输出为 0 的只有 2 次`
+（就是起音前两帧），`|voice_out| 峰值 = 5874511`（70% 满量程）。
+
+修复后回归：`tb_voice_mono` / `tb_adsr_vca` / `tb_svf_voice` 全 PASS，全系统编译 exit=0，
+rtl↔board 40 个 .v 哈希一致。
+
+```text
+tb_svf_voice    PASS  参考比对失配 0 处；通带 2169929/2097152、阻带 -38.4 dB、稳定
+tb_adsr_vca     PASS  量程 97149 步全在 [0,32767]
+tb_dds_voice    PASS  8000 样本逐位一致；槽内回绕 167 点；相位连续
+tb_voice_mono   PASS  整链 50.0% 满量程；两泳道逐位一致（无串扰）；释放归零
+tb_wave_pitch   PASS  20.48 ms 过零 10 次（2x 会是 42 次）；timbre 锁存 bad_slot=0
+tb_slot_probe   PASS  每声部每帧只推进一次、状态互不污染
+全系统 iverilog 编译 exit=0（含 simulation/models/gowin_prim_stub.v）
+```
+
+---
+
+## 4. 已知残余风险 / 未解释的现象
+
+### 4.0.0b ✅ 2026-10-22 14:51：P&R **零违例**（也验证了"违例↔耗时"相关性）
+
+```
+构建             Setup违例    TNS       最差slack   Fmax        P&R总时长   布线Phase1
+10-21 17:35        491     -1778 ns   -5.215    39.124 MHz    37 min      ~30 min
+10-21 21:32        673     -1460 ns   -3.466    41.997 MHz    62 min      54m56s
+10-21 23:21        201       -76 ns   -0.805    47.282 MHz    42 min      32m33s
+10-22 14:51          0         0 ns   +0.005    49.163 MHz    29m34s      21m45s   ★
+```
+⇒ **违例数与 P&R 时间正相关**：673→201→0 违例，62→42→29.5 分钟。
+
+零违例的关键：`adsr_vca` 的 `env_vca` 被综合器并进 **p40 DSP 的 B 口输入寄存器（BREG）**，
+把 "slot → 4 选 1 mux → 两个 DSP 乘串联 → 进位链 → audio_out"（21.07 ns）断开。
+现在最差路径变成 `wave_fetch` 的 ROM 地址（`n1087_s/DOUT → pROM/AD`，**+0.005 ns**）。
+⚠ **余量只有 5 ps**：以后任何改动都可能把它推过线，改完一定要看 `.tr`。
+
+位流：38.86 MB，14:51:46。
+
+### 4.0.0c ⭐ 2026-10-22 晚：仿真证明**干路数字域是干净的**
+
+两个离线探针 TB（不需要板子）：
+
+```
+tb_slot_probe.v  （加 dump）声部层波形 → scratch/agent/probe_voice.txt
+tb_chain_probe.v （新）干路全链：声部 → chan_layer → main_mix（FX 输入接 0）
+                       → scratch/agent/probe_chain.txt
+分析脚本：analyze_voice_wave.py、analyze_sim_dump.py
+```
+
+**结果（钢琴槽 0 / note 60 / 稳态）**
+
+```
+声部层 voice_out（208 ms，分辨率 4.9 Hz）
+  1F 263.2 +0.0 dB / 2F −16.2 / 3F −27.0 / 4F −32.6 / 非谐波 −42.3 dB，撞 sat24 = 0 次
+
+干路 main_l（61 ms 稳态）
+  峰峰 53.3% FS，**跳变 >10%FS = 0 次**，|Δ|max/RMS = 2.2
+  基频 260.4 Hz；2F −27.9 / 3F −24.0 / **4F −8.3**
+  钢琴表本来就是「基频 85.7% + 4 次谐波 13.3%」→ 4F 理论 −8.8 dB，完全吻合
+  非谐波 −45.3 dB
+```
+
+⇒ **声部层 + 通道层 + 主混音（数字干路）没有失真、没有跳变、没有削波。**
+⇒ "炸"只可能来自：① 效果器（TB 里 FX 输入接 0，未测）；② 硬件侧（时序/DAC/模拟）；
+③ TB 条件与实板不同（多声部、别的音色、真实 ADSR 参数）。
+
+⚠ 2026-10-22 上板实测两条关键事实：
+```
+· CC11 127 → 8（−24 dB）：音量明显变小，但"炸"的质感**不变**
+  ⇒ 不是阈值型削波（削波会随电平减轻），是"与幅度无关"的形状/断点类失真
+· CC91/93/94 = 0 关效果器：先出现"非常非常微弱、不炸"，后来又"还是炸"——两次矛盾，需重测
+  ⇒ 但干路既然干净，**效果器成为头号嫌疑**
+```
+
+### 4.0.0 ⭐ 2026-10-22：仍"炸"的根因 = `audio_out` 建立时间不足（192/201 违例）
+23:21 那版位流上板后：音高正确（C24 实测 **261.3 Hz**，2F 只有 **−34.6 dB** → 2 倍音高问题
+**确认修好**），但**仍然炸**。C24 波形分析（`material/waveform/c24.csv`，60 ms）：
+
+```
+相邻采样差值 >0.5 V 的有 85 处；最狠一处 −1.25 V → +0.95 V 一步跳 2.2 V
+参考：干净 261 Hz 在 20 kSa/s 下每点最大变化约 0.12 V
+→ 波形里有大量不连续 = 咔哒/毛刺
+```
+
+对照 P&R 报告，最差路径正是音频输出寄存器（**201 个违例里 192 个 = 8 泳道 × 24 bit**）：
+
+```
+slot_0_s0（扇出 2613）--5.9 ns 布线--> env_r[slot] 的 4 选 1 mux
+  → p40 DSP 乘（audio × env）→ prod DSP 乘（× g_vt）→ 进位链 → audio_out
+数据延时 21.07 ns vs 周期 20.345 ns → slack −0.793 ns
+```
+
+**修法（2026-10-22 已做，功能不变）**：`adsr_vca` 里加 `env_vca <= env_value`，VCA 用 `env_vca`。
+env 每时隙只变一次、`vca_en` 在时隙后段，两者在 `vca_en` 那拍完全相等。
+把 "slot → mux → 5.9 ns 布线" 这 6.1 ns 从路径摘掉 → 预计 slack 从 −0.79 变到 +5 左右。
+
+回归：`tb_slot_probe` 数字与改前**完全一致**（198 / 2 / 5874511）、`tb_adsr_vca` PASS、
+`tb_voice_mono` PASS、全系统编译 exit=0、rtl↔board 哈希一致。
+
+**同时改探针**：`dbg_sd_va`（E25）原来只取泳道 0，实测泳道 0 空闲时读到 2.9 V 直流、按键不变
+（MIDI 分配器把音符分到哪条泳道是任意的）。改成 **8 条泳道求和后寄存**（空闲声部贡献 0）
+→ 只反映真正在响的声部。
+
+**剩余已知违例**：`wave_fetch` 的 ROM 地址路径（`n1087_s/DOUT → pROM/AD`，约 9 个端点，−0.805 ns）。
+先不动（改动要挪一整个扫描周期，风险高）；192 个违例消失后布线器有更多余量，可能自行收敛。
+若仍不收敛，零风险的办法是把 `-route_option 2` 换成 1（时序优先）。
+
+### 4.0 预取路径：vtab 4 选 1 + 三级流水（2026-10-21 晚已做）
+
+原来 `pf_phase_inc` 一拍里串：
+`slot → vtab[vid]（**隐性 32 选 1** 读 mux）→ vib_bend_ratio(16×16) → apply_ratio(32×16) → 饱和`，
+实测数据延时 23.7 ns vs 周期 20.345 ns → slack −3.466 ns。
+
+**两处改动**：
+```
+① vtab 读降到 4 选 1：本泳道 vid = {nslot, gl}，低 3 位 gl 是 generate 常量，
+   候选只有 4 条。原来写 `vtab[vid]` 综合没利用这个常量关系，做成了大 mux
+   （路径里 5 级 LUT、跨区跳线合计约 13 ns）。改成显式 4 选 1：
+       (nslot==0)? vtab[{0,gl}] : (nslot==1)? vtab[{1,gl}] : ...
+② 三级流水（每级只做一件事）：
+   A slot_vld    ：读出并锁存要用的 79 位字段（it_r = phinc|vcagain|velgain|note|ch|timbre|gate）
+   B slot_vld+1  ：ratio_r <= bend×vib（16×16）；其余 pf_* 字段同时写
+   C slot_vld+2  ：pf_phase_inc <= phinc×ratio（32×16）+ 饱和
+```
+时隙周期 32 拍，第 3 拍出结果（余量约 29 拍）；voice_mono 在**下一个** slot_vld 才采样 pf_*，
+语义不变。新增寄存器约 760 个（it_r 632 + ratio_r 128），DSP 仍 84。
+
+回归：`tb_voice_fetch` / `tb_sched_subsystem` / `tb_voice_mono` 全 PASS；
+`tb_slot_probe` 数字与改动前完全一致（`gate=1 的 dv=198 / 输出0=2 / max|out|=5874511`）。
+
+### 4.0.1 P&R 耗时构成（2026-10-21 21:32 那次，实测）
+
+```
+Total Placement   6m28s        ← 每次都很稳定
+Routing Phase 1  54m56s        ← 93% 的时间在这一步（拥塞 + -timing 迭代）
+Routing Phase 2   0m03s        ← 注意：日志按阶段刷盘，实际不是卡在 Phase 2
+Total            62m03s
+历史区间：37 ~ 63 分钟（与违例数无相关性：392 违例跑过 62 分钟，491 违例跑 37 分钟）
+```
+
+**提速杠杆**（按可用性排序，未经验证的要先做 A/B）：
+```
+① 功能验证阶段用 `-timing`（时序驱动）关掉跑 P&R —— 时序好坏不影响"能不能出声"的判断
+② 批量改完再跑一次 P&R，别改一行跑一次
+③ `place_option 1`（牺牲布局时间换更好布局）→ 可能让布线更快，需实测
+④ 设计规模：这轮 +3224 寄存器 / +1738 LUT（4 选 1 状态阵列），是拥塞上升的主因
+工具链：`D:\Gowin\...\IDE\bin\gw_sh.exe` 是 Tcl 控制台，可无头跑 综合/P&R 做 A/B
+        （需先在 IDE 里关闭工程，避免文件占用）
+```
+```text
+① P&R 时序违例（10-21 17:35 那版：Setup 491、最差 −5.215 ns、Fmax 39.124 MHz）
+   全部落在 u_sched/u_sq/slot_1_s0 → u_sched/u_vf/pf_phase_inc_*_s0
+   = voce_fetch 的 vib_bend_ratio(16x16) + apply_ratio(32x16) 两个 DSP 乘法串一拍
+   表现：偶发"咔哒/音准抖"，不是持续炸。根本解 = 待处理_预取时序.md 的两级拆分（不增 DSP）
+② 波表数据本身薄（钢琴 85.7%+4 次谐波、吉他≈纯正弦）→ "薄/闷"是数据，不是 bug
+③ 起音变慢：包络恢复设计速率后，槽0 的 a_step=2 ≈ 340 ms（改前被 4x 速，约 85 ms）
+   觉得太慢就调 timbre 参数表的 a_step，不用改逻辑
+④ **未解释**：交接文档记"等 10 秒不衰减"，但按代码包络应在 100~300 ms 内衰到 0
+   （探针仿真里确实看到 env 在掉）。若新位流仍"响了不衰减"，说明模型还缺一块
+⑤ 高音区混叠：波表 2048 点，高音时谐波超 Nyquist（但新表谐波很少，影响应远小于以前）
+```
+
+---
+
+## 5. 上板验证清单（烧新位流后按顺序做）
+
+### 5.0 三级音频探针（2026-10-21 加，PMOD1 / J24）
+
+```
+Pin  脚号  信号                                  含义
+C24  1    dbg_sd    = sample_l                   通道+效果+主输出之后（DAC 之前）
+E25  2    dbg_sd_va = voice_aud[泳道0]           SVF + 包络 + VCA 之后
+L17  3    dbg_sd_wv = DDS 波表输出[泳道0]        SVF 之前（直接看波表内容）
+```
+三路都是 `sd_out`（一阶 1 位 sigma-delta，clk_sys 49.152 MHz），24 位信号取 `[23:8]` 喂进去。
+RTL：`full_system` 例化两个 `sd_out`；`full_top` 新增 `dbg_voice_aud` 输出；
+`voice_mono` 新增 `dbg_wave` 输出。CST 两份（`rtl/top/full_top.cst` ↔ `board/.../full_system.cst`）已同步。
+
+**⚠ 关键：RC 截止频率要按目的选**
+```
+判音高：R=1k + C=100nF → fc≈1.59 kHz   （干净，但把 1.5 kHz 以上全滤掉）
+判"炸"：R=1k + C=10nF  → fc≈15.9 kHz   （要两节串联更干净）
+        用 1.59 kHz 测"炸"会把高频失真滤掉，看起来一切正常 —— 这是个大坑
+```
+示波器：**1 MΩ 输入**、DC 耦合、1 V/div（50 Ω 会把 3.3 V 压到 0.48 V）。
+
+**判据表**：
+```
+wv 脏            → 波表数据 / DDS 插值有问题
+wv 干净、va 脏   → SVF / 包络 / VCA 有问题
+va 干净、sd 脏   → 通道层 / 效果器 / 主输出有问题（先把 CC91/93/94 设 0 排除效果尾巴）
+三路都干净       → 数字域干净，若耳机还炸则查 DAC / 功放 / 模拟
+```
+
+```text
+① 对照组：program 3（长笛）——波表与路径都没变，应与以前一致
+② 主判定：program 0/1 弹 C4 → 示波器 FFT 最强峰 260~265 Hz
+           若 1046 Hz 有约 −17 dB 分量 = 钢琴表的 4 次谐波，正常
+③ 按住 2 秒：声音应平稳持续（不再一击+长尾）
+④ 和弦三音：应能分辨三个音，不再糊成一团
+⑤ 若还炸：先分清是"偶发咔哒"（→ 预取时序）还是"持续宽带噪音"（→ 六路探针）
+```
+
+---
+
+## 6. 常用命令
+
+```powershell
+# 重建 / 校验波表（在 wave_table 目录）
+python rebuild_wave_table.py            # dry-run，只分析
+python rebuild_wave_table.py --write    # 写两个产物 hex
+python rebuild_wave_table.py --verify   # 回读产物 + 与快照逐行对比 + DDS 音高模型
+python verify_rom_init.py               # 出位流后核对 INIT_RAM == 当前 hex
+
+# 全系统编译（在 board/full_system 目录，便于 data/*.hex 被 $readmemh 找到）
+iverilog -g2005 -o $env:TEMP\full.vvp -s full_system -I ..\..\rtl `
+  (gci ..\..\rtl -recurse -filter *.v).FullName ..\..\simulation\models\gowin_prim_stub.v
+
+# 专项仿真（在 board/full_system 目录）
+vvp $env:TEMP\tb_wp.vvp     # tb_wave_pitch
+vvp $env:TEMP\tb_sp.vvp     # tb_slot_probe
+
+# P&R 是否真的重跑过：impl\pnr\full_system.tr 的时间戳必须晚于 cmd.do
+```
+
+---
+
+## 7. 踩过的坑（新）
+
+```text
+① `buf` 是 Verilog 门级原语保留字！拿它当数组名会在**声明行**报
+   "syntax error / invalid module item"，看起来像数组语法问题，其实是保留字。
+② iverilog -g2005 不接受 `reg signed [23:0] a[0:N-1]`（带符号向量数组）；
+   用无符号数组 + $signed() 比较即可。
+③ Gowin 对全零的 INIT_RAM 块省略 defparam（缺失 = 0，不是错）。
+④ 自己搭 voice_fetch 的 TB 时，ch_bend_ratio / ch_vib_ratio 必须接 Q2.14 的 16384，
+   接 0 会让 apply_ratio 输出 0 → phase_inc=0 → 相位不动、完全没声音。
+⑤ 不要用 `Get-Content -Raw` + `Set-Content` 改含中文的源码：会双重编码写坏文件
+   （已踩：tb_wave_pitch.v）。改文件一律用编辑器工具，或 .NET ReadAllText/WriteAllText
+   配 UTF8Encoding($false)。
+⑥ 本工作区一度出现"子进程写盘被拒"（沙箱 ACL 未下发），DSH 的 write/edit 工具能写、
+   python/pwsh 子进程不能写。切到完全权限后恢复。
+```

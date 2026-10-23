@@ -35,7 +35,7 @@ module tb_timbre_e2e;
     reg [3:0] midi_rx = 4'hF;             // 空闲线 = 1
 
     full_system #(
-        .USE_PLL(0), .P(P), .G(4), .NCH(NCH), .STRIDE(8),
+        .USE_PLL(0), .P(P), .G(4), .NCH(NCH), .STRIDE(32),
         .PA_DELAY(8), .POR_BITS(8),
         .TEST_MODE_DEFAULT(0),            // 关测试模式：走真实 MIDI→发声 通路
         .WAVE_INIT_FILE("data/wave_table.hex")  // ⚠ 相对**仿真工作目录**；不载入则 ROM 未初始化 → 全 X

@@ -26,6 +26,7 @@
         <File path="src/global/master_chain.v" type="file.verilog" enable="1"/>
         <File path="src/global/master_volume.v" type="file.verilog" enable="1"/>
         <File path="src/global/soft_limiter.v" type="file.verilog" enable="1"/>
+        <File path="src/scheduler/ch_lfo.v" type="file.verilog" enable="1"/>
         <File path="src/scheduler/chan_param_shadow.v" type="file.verilog" enable="1"/>
         <File path="src/scheduler/chan_table.v" type="file.verilog" enable="1"/>
         <File path="src/scheduler/midi_arb.v" type="file.verilog" enable="1"/>
@@ -37,6 +38,7 @@
         <File path="src/scheduler/voice_fetch.v" type="file.verilog" enable="1"/>
         <File path="src/top/full_system.v" type="file.verilog" enable="1"/>
         <File path="src/top/full_top.v" type="file.verilog" enable="1"/>
+        <File path="src/top/sd_out.v" type="file.verilog" enable="1"/>
         <File path="src/top/test_voice_gen.v" type="file.verilog" enable="1"/>
         <File path="src/top/voice_slot_seq.v" type="file.verilog" enable="1"/>
         <File path="src/voice/adsr_vca.v" type="file.verilog" enable="1"/>

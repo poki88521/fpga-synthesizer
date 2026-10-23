@@ -65,7 +65,12 @@ module chan_layer #(
 
     localparam integer N      = P * G;      // 32
     localparam integer AWX    = 32;         // 累加器位宽
-    localparam signed [AWX-1:0] RND = 32'sd16384;   // 2^14，四舍五入
+    //  ⚠ 2026-10-14 修正：必须是 **48 位有符号**常量。
+    //     原来写成 32 位、又在调用处用位拼接 `{{16{1'b0}}, RND}` 扩宽 ——
+    //     **位拼接在 Verilog 里永远是无符号的**，会让 `pl + ...` 整个表达式变成无符号，
+    //     随后的 `>>> 15` 退化成**逻辑右移**（补 0），负数被转成巨大正数再饱和到 0x7FFFFF。
+    //     现象：ch_l 恒为 [0, 8388607]、从不为负、主混音恒饱和、力度差异被抹平。
+    localparam signed [AWX+16-1:0] RND = 48'sd16384;   // 2^14，四舍五入（48 位有符号）
 
     // ---------------- 暂存 + 系数 ----------------
     wire [CW-1:0]        rd_ch;
@@ -116,8 +121,12 @@ module chan_layer #(
     wire signed [15:0]    gR_c    = gR_flat[cscan*16 +: 16];
     wire signed [AWX+16-1:0] pl   = acc_sat * gL_c;                // 24 x 16 = 40
     wire signed [AWX+16-1:0] pr   = acc_sat * gR_c;
-    wire signed [AW-1:0]  chl_nxt = sat24((pl + {{(AWX+16-AWX){1'b0}}, RND}) >>> 15);
-    wire signed [AW-1:0]  chr_nxt = sat24((pr + {{(AWX+16-AWX){1'b0}}, RND}) >>> 15);
+    //  ⚠ 2026-10-15：中间量写成**显式 signed wire**，消除内联表达式的符号性歧义。
+    //     （iverilog 与 Gowin 对"位拼接/内联表达式的符号性"处理可能不同。）
+    wire signed [AWX+16-1:0] pl_r = pl + RND;
+    wire signed [AWX+16-1:0] pr_r = pr + RND;
+    wire signed [AW-1:0]     chl_nxt = sat24(pl_r >>> 15);
+    wire signed [AW-1:0]     chr_nxt = sat24(pr_r >>> 15);
 
     // ---------------- 时隙计数 ----------------
     reg [SW-1:0] slot_cnt;

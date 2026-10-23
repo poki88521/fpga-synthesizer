@@ -84,6 +84,7 @@ module tb_voice_mono;
                 .clk           (clk),
                 .rst_async_n   (rst_async_n),
                 .sample_en     (sample_en),
+                .slot         (2'd0),
                 .phase_inc     (phase_inc[gi]),
                 .wave_sel      (wave_sel[gi]),
                 .timbre_slot   (timbre_slot[gi]),
@@ -232,7 +233,7 @@ module tb_voice_mono;
         //   错误（跨到槽 3）  ：tab_n1 = 0 —— 本用例能区分这两种
         //====================================================================
         do_reset();
-        g_lane[1].u_voice.u_dds.phase_acc = 32'd2047 << 21;    // idx = 2047, frac = 0
+        g_lane[1].u_voice.u_dds.phase_r[0] = 32'd2047 << 21;   // 方案 A：phase_acc 已是 wire，改写 slot0 的状态    // idx = 2047, frac = 0
         for (k = 0; k < P; k = k + 1) phase_inc[k] = 32'd0;
         timbre_slot[1] = 3'd2;                                 // 斜坡槽
         do_slot();

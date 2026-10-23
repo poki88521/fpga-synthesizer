@@ -27,6 +27,7 @@ module adsr_vca (
     input  wire        clk,
     input  wire        rst_n_sync,
     input  wire        sample_en,
+    input  wire [1:0]  slot,                  // 当前时隙号（4 份状态的选择子，2026-10-21）
     input  wire signed [23:0] audio_in,       // 来自 SVF，Q1.23
     input  wire        gate,                  // 按键按下 = 1
     input  wire        sustain_pedal,         // 延音踏板踩下 = 1
@@ -38,9 +39,32 @@ module adsr_vca (
     input  wire [15:0] velocity_gain,         // Q1.15
     input  wire [15:0] vca_gain,              // Q1.15
     output reg  signed [23:0] audio_out,      // 送往通道混音层
-    output reg  [15:0] env_value,             // 写回声部状态表（Q1.15，0~32767）
-    output reg  [2:0]  env_state              // 写回声部状态表
+    output wire [15:0] env_value,             // 写回声部状态表（= 本时隙声部的值）
+    output wire [2:0]  env_state              // 写回声部状态表
 );
+
+    //========================================================================
+    //  4 份包络状态（2026-10-21，方案 A）
+    //
+    //  一条泳道时分复用服务 4 个声部（每帧 4 个时隙），而包络只有一套 →
+    //  ① 4 个声部的包络互相覆盖；② 本模块每帧被推进 **4 次** → 包络时间只有
+    //  设计值的 1/4（起音/衰减/释放全部偏快）；③ 更致命的是 `gate` 只有在本声部
+    //  那个时隙才为 1，另外 3 次采样看到 0 → SUSTAIN 里立刻被判成"松键"进 RELEASE，
+    //  任何音都站不住（实测评：env 从 24000 一路往下掉）。
+    //
+    //  改成按 slot 索引的 4 份状态后：每个声部每帧只被推进一次 →
+    //  包络时间恢复为设计值，且只受自己的 gate 控制。
+    //  资源：19 bit × 4 × 8 泳道 = 608 个寄存器。
+    //
+    //  ⚠ `env_value` / `env_state` 这两个**名字**保留为"当前时隙那一份"的组合读出，
+    //    因此下面所有组合逻辑（差分方程、状态机、VCA 乘法）都不用改。
+    //========================================================================
+    reg [15:0] env_r [0:3];
+    reg [2:0]  st_r  [0:3];
+    integer i;
+
+    assign env_value = env_r[slot];
+    assign env_state = st_r [slot];
 
     localparam [2:0] IDLE            = 3'd0;
     localparam [2:0] ATTACK          = 3'd1;
@@ -159,8 +183,34 @@ module adsr_vca (
     //     故统一改成显式扩展，语义不依赖上下文。
     wire [31:0] g_vt = (({16'd0, velocity_gain}) * ({16'd0, vca_gain})) >>> 15;
 
-    // 采样率路径：p48 = audio_in × env_value（40 位，符号扩展进 48 位）
-    wire signed [39:0] p40    = audio_in * $signed({1'b0, env_value});
+    //========================================================================
+    //  ⚠⚠ 2026-10-22：给 VCA 用的包络单独打一拍（**修"炸"的关键**）
+    //
+    //  实测最差路径（P&R 报告，201 个违例端点里 **192 个** 是这一族 = 8 泳道 × 24 bit）：
+    //      slot_0_s0（扇出 2613）--5.9 ns 布线--> env_r[slot] 的 4 选 1 mux
+    //      → p40 DSP 乘（audio × env）
+    //      → prod DSP 乘（× g_vt）          ← 两个乘法器串联
+    //      → 进位链（饱和）
+    //      → audio_out
+    //      数据延时 21.07 ns vs 周期 20.345 ns → slack −0.79 ns
+    //
+    //  `audio_out` 是每个声部的音频输出寄存器，建立时间不够时会锁存到中间值/错值
+    //  → 音频里出现跳变毛刺。实测 C24 波形 60 ms 内有 85 处 >0.5 V 的跳变
+    //    （干净 261 Hz 每点最多约 0.12 V），这就是"炸"的直接来源。
+    //
+    //  修法：`env_vca` = `env_value`（= env_r[slot] 的 mux 输出）的寄存器副本，
+    //  把"slot → mux → 5.9 ns 布线"这 6.1 ns 从路径上摘掉。
+    //  **功能完全不变**：env 每个时隙只变一次，而 vca_en 在时隙后段，
+    //  所以在 vca_en 那一拍 env_vca 与 env_value 完全相等（仿真回归已验证波形不变）。
+    //========================================================================
+    reg [15:0] env_vca;
+    always @(posedge clk or negedge rst_n_sync) begin
+        if (!rst_n_sync) env_vca <= 16'd0;
+        else             env_vca <= env_value;
+    end
+
+    // 采样率路径：p48 = audio_in × env_vca（40 位，符号扩展进 48 位）
+    wire signed [39:0] p40    = audio_in * $signed({1'b0, env_vca});
     wire signed [47:0] p48    = {{8{p40[39]}}, p40};
 
     // voice_out = sat24( (p48 × g_vt) >>> 30 )
@@ -178,13 +228,15 @@ module adsr_vca (
     //---------------- 时序 ----------------
     always @(posedge clk or negedge rst_n_sync) begin
         if (!rst_n_sync) begin
-            env_value <= 16'd0;
-            env_state <= IDLE;
+            for (i = 0; i < 4; i = i + 1) begin
+                env_r[i] <= 16'd0;
+                st_r [i] <= IDLE;
+            end
             audio_out <= 24'sd0;
         end else if (sample_en) begin
-            env_value <= env_next;
-            env_state <= state_next;
-            audio_out <= vca_sat;
+            env_r[slot] <= env_next;
+            st_r [slot] <= state_next;
+            audio_out   <= vca_sat;
         end
     end
 
