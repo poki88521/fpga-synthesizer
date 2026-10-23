@@ -31,7 +31,14 @@ __pycache__/
 .ipynb_checkpoints/
 
 # Gowin 工程的导入数据目录（由 sync_src.ps1 从仓库生成，属构建产物）
-board/full_system/data/
+#  ⚠ 2026-10-23：wave_table.hex 例外——
+#     它是**综合必需输入**（full_system.v 的 WAVE_INIT_FILE），
+#     而它的源头 wave_table/out/wave_table.hex 被 /wave_table/* 忽略，
+#     等于这份文件在仓库里没有任何副本 → 故单独纳入版本管理。
+#     注意：git 不允许"父目录被整体忽略时再用 ! 例外"，所以这里必须写成
+#     data/* + 负向规则的形式，不能写成 data/ + !.../wave_table.hex。
+board/full_system/data/*
+!board/full_system/data/wave_table.hex
 
 # ---------------------------- 文件级（少量必要）----------------------------
 
