@@ -233,13 +233,35 @@ module voice_mono (
         .rom_addr_n1 (rom_addr_n1)
     );
 
+    //  ============================================================
+    //  2026-10-24 新增：滤波器包络调制（音色字段 filter_env_depth 的"先听效果"版）
+    //
+    //  音乐意图：真实乐器起音亮、衰减后暗。
+    //  做法：包络越低 → 截止频率**往下拉**（只减不加，绝不会把 f_coeff 推过
+    //        Chamberlin SVF 的稳定上限，这是安全性的关键）。
+    //        env=32767（满）→ dip=0（截止=原始值）
+    //        env=0        → dip=2047（钢琴槽 30000 → 27952）
+    //  深度由移位常量控制（>>4 约 6% 满量程），想更明显就减小移位量。
+    //  ⚠ 打一拍再用：env_value 是 4 选 1 mux 的输出，历史上这条 mux 的布线
+    //     曾把 audio_out 路径拖到 −0.79 ns，不能让 mux+减法直接进 SVF 的系数乘法。
+    //  ============================================================
+    wire [15:0] env_dip = (16'd32767 - env_value) >> 4;
+    reg  [15:0] f_mod_r;
+
+    always @(posedge clk or negedge rst_n_sync) begin
+        if (!rst_n_sync)
+            f_mod_r <= 16'd0;
+        else
+            f_mod_r <= (l_f_coeff > env_dip) ? (l_f_coeff - env_dip) : 16'd0;
+    end
+
     svf_voice u_svf (
         .clk         (clk),
         .rst_n_sync  (rst_n_sync),
         .sample_en   (svf_en),
         .slot        (slot),             // 2026-10-21：4 份滤波器状态的选择子
         .audio_in    (dds_out),
-        .f_coeff     (l_f_coeff),        // 2026-10-21：改用 dds_en 锁存值
+        .f_coeff     (f_mod_r),          // 2026-10-24：包络调制后的截止频率
         .q_coeff     (l_q_coeff),
         .filter_type (l_ftype),
         .audio_out   (svf_out),

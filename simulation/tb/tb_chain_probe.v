@@ -181,7 +181,7 @@ module tb_chain_probe;
 
     //------------------------------------------ dump：每帧一行
     integer fd;
-    initial fd = $fopen("D:/code/fpga-synthesizer/folder-reorg/scratch/agent/probe_chain.txt", "w");
+    initial fd = $fopen("D:/code/fpga-synthesizer/develop/scratch/agent/probe_chain.txt", "w");
     integer nc = 0;
     always @(posedge clk) begin
         if (rst_n && mix_vld) begin

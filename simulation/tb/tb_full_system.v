@@ -311,7 +311,7 @@ module tb_full_system;
     //  目的：判断"炸"到底是 RTL 逻辑就有的，还是只在硬件上（时序/模拟）才出现。
     //========================================================================
     integer fd;
-    initial fd = $fopen("D:/code/fpga-synthesizer/folder-reorg/scratch/agent/probe_full.txt", "w");
+    initial fd = $fopen("D:/code/fpga-synthesizer/develop/scratch/agent/probe_full.txt", "w");
     always @(posedge clk50) begin
         if (dut.rst_n_sync && dut.sample_stb)
             $fwrite(fd, "%0d %0d %0d %0d\n",

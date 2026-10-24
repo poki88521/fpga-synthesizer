@@ -73,7 +73,7 @@ module tb_reverb_probe;
     //  做法：帧内锁存最后一次 ret_l；同时统计**内部节点 comb_sum_n 是否会被 sat24 削顶**
     //        —— 只看输出峰值会被全通网络掩盖，必须看内部节点。
     integer fd;
-    initial fd = $fopen("D:/code/fpga-synthesizer/folder-reorg/scratch/agent/probe_reverb.txt", "w");
+    initial fd = $fopen("D:/code/fpga-synthesizer/develop/scratch/agent/probe_reverb.txt", "w");
 
     reg signed [23:0] last_ret = 24'sd0;
     integer nr = 0, nsat = 0, pmax = 0, v;

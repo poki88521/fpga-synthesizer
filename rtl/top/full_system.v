@@ -108,7 +108,16 @@ module full_system #(
     //      dbg_sd_va : voice_aud[泳道0]（SVF+包络+VCA 之后）→ 看滤波器/包络有没有制造失真
     //      dbg_sd    : sample_l（通道+效果+主输出之后）      → 看后级有没有再添油加醋
     output wire         dbg_sd_va,   // PMOD1_IO1（J24 第 2 脚，E25）
-    output wire         dbg_sd_wv    // PMOD1_IO2（J24 第 3 脚，L17）
+    output wire         dbg_sd_wv,   // PMOD1_IO2（J24 第 3 脚，L17）
+
+    // ---- 2026-10-23 加：800x480 LCD 波形可视化（sakiko 的 vis_top）----
+    //    数据源是 full_top 的 mon_l（= sample_l 直连），**不影响音频通路**。
+    //    引脚与面板时序取自已上板验证的 board/myProjForMWhichVis 工程。
+    output wire         lcd_clk,     // H21
+    output wire         lcd_en,      // A24
+    output wire [5:0]   lcd_r,       // H19 J19 G25 H18 J18 K17（RGB666，高 6 位）
+    output wire [5:0]   lcd_g,       // J16 K15 F22 G22 G21 G20
+    output wire [5:0]   lcd_b        // F20 G19 F19 F18 M17 M16
 );
 
 assign dbg_led[3] = ~(dbg_evt_cnt != 22'd0);      // 同上，低电平点亮
@@ -150,6 +159,10 @@ assign dbg_led[3] = ~(dbg_evt_cnt != 22'd0);      // 同上，低电平点亮
     wire [P*24-1:0] voice_dbg_wave; // 调试探针：各泳道的 DDS 波表输出（只用泳道 0）
     wire [23:0]     dbg_va_w;       // 调试探针：voice_aud 泳道 0
     wire [23:0]     dbg_wv_w;       // 调试探针：DDS 输出 泳道 0
+
+    // 2026-10-23：可视化音频抽头（来自 full_top 的 mon_l/mon_r，纯直连）
+    wire [15:0]     mon_l_w;
+    wire [15:0]     mon_r_w;
 
     wire [P*4-1:0]  voice_ch;
     wire [P-1:0]    voice_vld;
@@ -203,7 +216,9 @@ assign dbg_led[3] = ~(dbg_evt_cnt != 22'd0);      // 同上，低电平点亮
         .rst_n_sync_o(rst_n_sync),
         .clk_sys_o  (clk_sys),         // ⚠ 外部三层统一用这根，不要用 clk50
         .dbg_sd     (dbg_sd),          // 1 位 SD 音频探针 → PMOD1_IO0
-        .dbg_voice_aud(dbg_va_w)       // 泳道 0 的 VCA 输出 → 另一路 SD 探针
+        .dbg_voice_aud(dbg_va_w),      // 泳道 0 的 VCA 输出 → 另一路 SD 探针
+        .mon_l      (mon_l_w),         // 2026-10-23：可视化抽头（= sample_l）
+        .mon_r      (mon_r_w)
     );
 
     // ========================================================================
@@ -226,6 +241,33 @@ assign dbg_led[3] = ~(dbg_evt_cnt != 22'd0);      // 同上，低电平点亮
         .rst_n (rst_n_sync),
         .x     (dbg_wv_w[23:8]),                 // 泳道 0 的 DDS 波表输出
         .sd    (dbg_sd_wv)
+    );
+
+    // ========================================================================
+    // 1.6 800x480 LCD 波形可视化（2026-10-23 接入，sakiko 的 vis_top）
+    //
+    //  来源：board/myProjForMWhichVis（**已上板验证**的那一版，不是 alpha 旧版）
+    //    · vis_audio 用"写端口自刷"代替 initial for 循环（旧版会 EX3934 降级成黑盒）
+    //    · pll_pixel 显式接死 SSC/动态相移等 13 个配置口（消 28 条 EX2565）
+    //
+    //  时钟：像素域 35 MHz 由 vis_top 内部的 pll_pixel 从 clk50 生成（独立时钟域）。
+    //  数据：sample_l 直连（mon_l_w），**不新增寄存器**，音频通路零影响。
+    //  面板：800x480，H_FP=210 H_BP=182 V_FP=45 V_BP=8 → 1192x533 @ 55.09 Hz。
+    // ========================================================================
+    vis_top u_vis (
+        .clk_sys   (clk_sys),
+        .rst_sys_n (rst_n_sync),
+        .sample_stb(sample_stb),
+        .sample_l  (mon_l_w),
+        .clk50     (clk50),
+        .lcd_clk   (lcd_clk),
+        .lcd_en    (lcd_en),
+        .lcd_r     (lcd_r),
+        .lcd_g     (lcd_g),
+        .lcd_b     (lcd_b),
+        .pll_lock_o(),            // 暂不引出
+        .dbg_wp    (),            // 暂不引出
+        .dbg_start ()
     );
 
 

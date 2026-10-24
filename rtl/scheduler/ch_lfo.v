@@ -7,7 +7,7 @@
 //      （很多经典模拟合成器的 vibrato 就是三角波）
 //    · 输出 ch_vib_ratio 与 ch_bend_ratio 同形态（Q2.14，16384 = 不颤），
 //      由 voice_fetch 预取时与弯音**先合成总倍率再乘表值**
-//    · 深度映射：mod_wheel(0..127) × 4 → 0..508（Q2.14 下约 ±0.37 半音）
+//    · 深度映射：mod_wheel(0..127) × 4 → 0..508，右移 5 后约 ±1.0 半音（2026-10-24 由 ±0.5 加倍）
 //      ⚠ mod_wheel 不走 chan_table（那个表已占满 182 位），
 //        而是由 sched_subsystem 从事件流里截获 CC1 存进 16×7 寄存器组
 //============================================================================
@@ -42,7 +42,7 @@ module ch_lfo #(
             wire signed [16:0] tri17 = {{8{tri_c[8]}}, tri_c};      // 符号扩展到 17 位
             wire        [16:0] dep17 = {8'd0, depth[8:0]};          // depth ≤ 508
             wire signed [33:0] vib_p = tri17 * $signed(dep17);      // 34 位容器
-            wire signed [15:0] vib_d = vib_p >>> 6;                 // ±depth
+            wire signed [15:0] vib_d = vib_p >>> 5;                 // ±depth×2（2026-10-24：±0.5→±1 半音，演示更明显）
 
             always @(posedge clk or negedge rst_n_sync) begin
                 if (!rst_n_sync) begin

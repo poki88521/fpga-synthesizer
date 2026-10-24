@@ -109,7 +109,7 @@ module tb_wave_pitch;
     );
 
     //---------------------------------------------------------- 采样与统计
-    // 每帧在 cyc==25 记录一次 wave_out（slot0 的 rdy 已完成、slot1 尚未开始）
+    // 每帧在 cyc == 11'd29 记录一次 wave_out（slot0 的 rdy 已完成、slot1 尚未开始）
     integer n         = 0;
     integer ncross    = 0;
     integer bad_slot  = 0;
@@ -118,7 +118,7 @@ module tb_wave_pitch;
     reg [23:0] wsamp [0:NFRAME-1];
 
     always @(posedge clk) begin
-        if (rst_n && cyc == 25 && n < NFRAME) begin
+        if (rst_n && cyc == 11'd29 && n < NFRAME) begin
             wsamp[n] = wave_out;
             n = n + 1;
             if (n >= 2) begin
@@ -131,6 +131,16 @@ module tb_wave_pitch;
             bad_slot = bad_slot + 1;
     end
 
+    //  —— 2026-10-23 加：定位"输出恒 0"（rdy 有没有发？tab_n 有没有非零？rom_addr 在动吗？）
+    integer rdy_cnt = 0, tabnz = 0, tbn1z = 0, addr_chg = 0;
+    reg [13:0] addr_d = 14'd0;
+    always @(posedge clk) if (rst_n) begin
+        if (rdy)                  rdy_cnt  = rdy_cnt + 1;
+        if (tab_n[15:0]  !== 16'd0) tabnz  = tabnz + 1;
+        if (tab_n1[15:0] !== 16'd0) tbn1z  = tbn1z + 1;
+        if (rom_addr_n !== addr_d)  addr_chg = addr_chg + 1;
+        addr_d <= rom_addr_n;
+    end
     //---------------------------------------------------------- 结果
     real freq;
     initial begin
@@ -148,6 +158,7 @@ module tb_wave_pitch;
         $display("  过零次数 = %0d", ncross);
         $display("  实测音高 = %.2f Hz（期望 266.1 Hz；2x 会是 532 Hz）", freq);
         $display("  slot0 读到非锁存槽的 rdy 次数 = %0d（应为 0）", bad_slot);
+        $display("  [诊断] rdy 脉冲数=%0d  tab_n 非零拍=%0d  tab_n1 非零拍=%0d  rom_addr 变化=%0d", rdy_cnt, tabnz, tbn1z, addr_chg);
         $display("");
 
         if (freq > 240.0 && freq < 290.0 && bad_slot == 0)

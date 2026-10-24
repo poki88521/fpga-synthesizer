@@ -47,6 +47,11 @@
         <File path="src/voice/voice_mono.v" type="file.verilog" enable="1"/>
         <File path="src/voice/wave_fetch.v" type="file.verilog" enable="1"/>
         <File path="src/voice/wave_table_rom.v" type="file.verilog" enable="1"/>
+        <File path="src/vis/lcd_800x480.v" type="file.verilog" enable="1"/>
+        <File path="src/vis/pll_pixel.v" type="file.verilog" enable="1"/>
+        <File path="src/vis/vis_audio.v" type="file.verilog" enable="1"/>
+        <File path="src/vis/vis_top.v" type="file.verilog" enable="1"/>
+        <File path="src/vis/wave_render.v" type="file.verilog" enable="1"/>
         <File path="full_system.cst" type="file.cst" enable="1"/>
         <File path="full_system.sdc" type="file.sdc" enable="1"/>
     </FileList>

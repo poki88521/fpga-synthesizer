@@ -126,6 +126,11 @@ module full_top #(
     //  与 dbg_sd（sample_l，DAC 之前）对比，就能判断失真出在声部层还是后面的通道/效果层。
     output wire [23:0]      dbg_voice_aud,
 
+    //  2026-10-23 加：可视化用的音频抽头（接 sakiko 的 vis_top）
+    //  纯组合直连 sample_l/sample_r，**不新增任何寄存器**，对音频通路零影响。
+    output wire [15:0]      mon_l,
+    output wire [15:0]      mon_r,
+
 
     //  ⚠ PLL 复位保持（高有效，由外部驱动）：
     //    MS5351 配置完成之前必须**一直**把 PLL 按住 —— 否则它会锁到 MS5351 的
@@ -345,6 +350,10 @@ module full_top #(
         .x     (sample_l),
         .sd    (dbg_sd)
     );
+
+    //  ---- 2026-10-23：可视化音频抽头（给 vis_top，纯直连、无寄存器）----
+    assign mon_l = sample_l;
+    assign mon_r = sample_r;
 
     // ============================================================
     // 4. 声部时隙时序器（产生 slot / slot_vld）

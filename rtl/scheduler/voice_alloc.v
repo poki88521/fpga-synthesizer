@@ -162,7 +162,12 @@ module voice_alloc #(
     function [15:0] vel_gain_fn;
         input [6:0] vel;
         begin
-            vel_gain_fn = {2'b0, vel, 7'd0};      // 线性近似，音色表 vel_sensitivity 待接
+            //  2026-10-24：vel_sensitivity 第一版 —— **平方曲线**（原来线性 vel<<7）
+        //      vel=127 → 127×127 = 16129，与原来的 16256 只差 0.09 dB（**最大响度不变**）
+        //      vel=64  → 4096（原来 8192，−6 dB），vel=32 → 1024（原来 4096，−12 dB）
+        //      ⇒ 轻按明显更柔、重按仍然能顶到满，符合钢琴手感
+        //  代价：一次 7×7 乘法，但在**分配器**里（每按一次键算一次，不是逐采样）→ 无时序风险
+        vel_gain_fn = {9'd0, vel} * {9'd0, vel};
         end
     endfunction
 
