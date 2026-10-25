@@ -208,7 +208,7 @@ module tb_slot_probe;
     //     判据：voice_out 的谐波应该 ≈ 波表本身的谐波（钢琴=基频+4 次谐波）。
     //     若出现一大堆谐波/噪声 → 声部层在"制造"失真，与幅度无关。
     integer fd_v;
-    initial fd_v = $fopen("D:/code/fpga-synthesizer/folder-reorg/scratch/agent/probe_voice.txt", "w");
+    initial fd_v = $fopen("D:/code/fpga-synthesizer/develop/scratch/agent/probe_voice.txt", "w");
     always @(posedge clk) begin
         if (rst_n && data_vld && data_gate)
             $fwrite(fd_v, "%0d %0d\n", $signed(voice_out), $signed(u_voice.dbg_wave));

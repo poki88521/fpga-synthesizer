@@ -193,18 +193,24 @@ module soft_limiter #(
     //    会把 recip_mant 的低 8 位直接丢掉，实测相对误差飙到 **1.44%**；
     //    先乘后移降到 **0.0248%**（0.00215 dB）。穷举测试（`sim/tb_recip.v`）抓到的。
     //  位宽：recip_mant ≤ 32768，THRESH = 2^22.58 ⇒ 积 ≤ 2^37.58 < 2^48 ✓（用 48 位）
-    wire [47:0] gprod_2     = recip_mant_2 * {24'd0, THRESH[23:0]};
-    wire [15:0] recip_raw_2 = gprod_2 >> nk_d2;            // nk_d2 = k
+    wire [47:0] gprod_2     = recip_mant_d3 * {24'd0, THRESH[23:0]};
+    wire [15:0] recip_raw_2 = gprod_2 >> nk_d3;            // nk_d2 = k
     //  --- 保守余量：g −= (g >> 7)，即再降约 0.39%（0.034 dB，听感无感）---
     //  ⚠ 为什么必须留余量：倒数近似有 **+0.021%** 的增益误差，而该误差会经
     //    **包络反馈**放大（增益偏大 → 输出偏大 → env 偏大 → 再看下一拍）。
     //    实测不留余量时过载输出会**越过阈值 0.4%**（6295166 > 6291456），
     //    `tb_limiter` 第 2/5 项就会失败。留 0.39% 后全场景都不越阈值。
-    wire [15:0] recip_final_2 = recip_raw_2 - {9'd0, recip_raw_2[15:7]};
+    wire [15:0] recip_final_3 = recip_raw_2 - {9'd0, recip_raw_2[15:7]};
 
     reg  signed [AW-1:0] l_d3, r_d3;
     reg  [23:0]          env_d3;
     reg  [15:0]          recip_d3;
+    //  2026-10-24：拆两级（修 mant_d2 → recip_d3 的 20.255 ns 违例路径）
+    reg  [15:0]          recip_mant_d3;   // 插值结果打一拍，THRESH 乘法放到下一拍
+    reg  [4:0]           nk_d3;           // 与之一同延迟的 k
+    reg  [15:0]          recip_d4;
+    reg  signed [AW-1:0] l_d4, r_d4;      // 音频同步多延迟一拍
+    reg  [23:0]          env_d4;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -212,11 +218,24 @@ module soft_limiter #(
             r_d3     <= {AW{1'b0}};
             env_d3   <= 24'd0;
             recip_d3 <= 16'd0;
+            recip_mant_d3 <= 16'd0;
+            nk_d3         <= 5'd0;
         end else if (en) begin
             l_d3     <= l_d2;
             r_d3     <= r_d2;
             env_d3   <= env_d2;
-            recip_d3 <= recip_final_2;
+            recip_mant_d3 <= recip_mant_2;
+            nk_d3         <= nk_d2;
+        end
+    end
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            l_d4 <= {AW{1'b0}}; r_d4 <= {AW{1'b0}};
+            env_d4 <= 24'd0; recip_d4 <= 16'd0;
+        end else if (en) begin
+            l_d4 <= l_d3; r_d4 <= r_d3; env_d4 <= env_d3;
+            recip_d4 <= recip_final_3;
         end
     end
 
@@ -228,7 +247,7 @@ module soft_limiter #(
     //  ⚠ test_mode 是准静态配置信号，不打拍；它若在运行中变化，只影响当拍，
     //     下一拍起 env_d3/recip_d3 就与新值一致了（无累积误差）。
     wire [23:0] th_eff_3 = test_mode ? 24'sh7FFFFF : THRESH;
-    wire [15:0] g_tgt_3  = (env_d3 <= th_eff_3) ? 16'd32768 : recip_d3;
+    wire [15:0] g_tgt_3  = (env_d4 <= th_eff_3) ? 16'd32768 : recip_d4;
 
     // ---------------- 增益平滑：Attack 立即、Release 一阶 ----------------
     //  文档："G_target 小于 G_limit[n-1] 时立即响应" → 压下来不延迟（防爆音）
@@ -256,8 +275,8 @@ module soft_limiter #(
         end
     end
 
-    wire signed [47:0] lp = $signed(l_d3) * $signed({1'b0, g_cur});
-    wire signed [47:0] rp = $signed(r_d3) * $signed({1'b0, g_cur});
+    wire signed [47:0] lp = $signed(l_d4) * $signed({1'b0, g_cur});
+    wire signed [47:0] rp = $signed(r_d4) * $signed({1'b0, g_cur});
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin

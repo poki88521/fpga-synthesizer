@@ -41,6 +41,11 @@
         <File path="src/top/sd_out.v" type="file.verilog" enable="1"/>
         <File path="src/top/test_voice_gen.v" type="file.verilog" enable="1"/>
         <File path="src/top/voice_slot_seq.v" type="file.verilog" enable="1"/>
+        <File path="src/vis/lcd_800x480.v" type="file.verilog" enable="1"/>
+        <File path="src/vis/pll_pixel.v" type="file.verilog" enable="1"/>
+        <File path="src/vis/vis_audio.v" type="file.verilog" enable="1"/>
+        <File path="src/vis/vis_top.v" type="file.verilog" enable="1"/>
+        <File path="src/vis/wave_render.v" type="file.verilog" enable="1"/>
         <File path="src/voice/adsr_vca.v" type="file.verilog" enable="1"/>
         <File path="src/voice/dds_voice.v" type="file.verilog" enable="1"/>
         <File path="src/voice/svf_voice.v" type="file.verilog" enable="1"/>

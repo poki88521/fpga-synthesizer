@@ -82,14 +82,33 @@ module wave_fetch #(
     end
 
     // 扫描地址：c < NCT 时取第 c 个；否则给 0（收尾拍，数据不使用）
+    //
+    //  ⚠⚠ 2026-10-23：把 rom_addr 从"组合驱动"改成"mux 结果打一拍再送 ROM"。
+    //
+    //  原因（P&R 实测）：原写法路径 = an_r/an1_r 寄存器 → 8 选 1 mux → ROM 的 AD 脚，
+    //      数据延时 21.6 ns > 时钟周期 20.345 ns → slack −1.227 ns，
+    //      194 个 Setup 违例端点全集中在这一族（接入 LCD 后布局被挤走就爆了；
+    //      此前它一直只有 +0.005 ~ +0.014 ns 余量，是全设计最弱的一环）。
+    //  修法：mux 结果先落一拍再驱动 ROM 的 AD 口 → 路径拆成两段，
+    //      段1 an_r → mux → rom_addr_r（约 6~10 ns）
+    //      段2 rom_addr_r → ROM AD（约 3~5 ns，FF 直连 BSRAM）
+    //  代价：ROM 读延迟 1 拍 → 2 拍，所以下面两处必须同步改：
+    //      · 存数索引 c-1 → c-2（见"样本寄存器"块）
+    //      · 扫描长度 NCT → NCT+1（见"扫描控制"块的收尾判据）
     integer lane;
+    reg [AW-1:0] mux_addr;
     always @(*) begin
         lane = c >> 1;
         if (c < NCT) begin
-            if (c[0]) rom_addr = an1_r[lane*AW +: AW];
-            else      rom_addr = an_r [lane*AW +: AW];
+            if (c[0]) mux_addr = an1_r[lane*AW +: AW];
+            else      mux_addr = an_r [lane*AW +: AW];
         end else
-            rom_addr = {AW{1'b0}};
+            mux_addr = {AW{1'b0}};
+    end
+
+    always @(posedge clk or negedge rst_n_sync) begin
+        if (!rst_n_sync) rom_addr <= {AW{1'b0}};
+        else             rom_addr <= mux_addr;
     end
 
     //---------------- 样本寄存器 ----------------
@@ -103,13 +122,14 @@ module wave_fetch #(
                 tabn[j]  <= {DW{1'b0}};
                 tabn1[j] <= {DW{1'b0}};
             end
-        end else if (running && (c > 0) && ((c - 1) < NCT)) begin
-            // 本拍 rom_dout 对应**上一拍**presented 的地址，即索引 c-1。
-            //   c-1 为偶数 → 那次读的是 addr_n  → 存 tabn
-            //   c-1 为奇数 → 那次读的是 addr_n1 → 存 tabn1
-            // 即：c 为奇数存 tabn，c 为偶数存 tabn1。
-            if (c[0]) tabn [(c-1) >> 1] <= rom_dout;
-            else      tabn1[(c-1) >> 1] <= rom_dout;
+        end else if (running && (c > 1) && ((c - 2) < NCT)) begin
+            // 本拍 rom_dout 对应**两拍前**presented 的地址（rom_addr 已打一拍 + BSRAM 读延迟一拍），
+            // 即索引 c-2（原来是 c-1）。
+            //   索引为偶数 → 那次读的是 addr_n  → 存 tabn
+            //   索引为奇数 → 那次读的是 addr_n1 → 存 tabn1
+            // 索引 (c-2) 与 c 同奇偶，所以判据是"c 偶数存 tabn"（原来的 c 奇数存 tabn 已翻转）。
+            if (c[0]) tabn1[(c-2) >> 1] <= rom_dout;
+            else      tabn [(c-2) >> 1] <= rom_dout;
         end
     end
 
@@ -126,7 +146,9 @@ module wave_fetch #(
                 c       <= 6'd0;
                 running <= 1'b1;
             end else if (running) begin
-                if (c == NCT6) begin
+                // 2026-10-23：rom_addr 打了一拍，最后一个地址 #(NCT-1) 的数据要到 c == NCT+1 才回来
+                //   （原来是 c == NCT，因为那时候地址是组合直连的、只差 BSRAM 一拍）。
+                if (c == NCT6 + 6'd1) begin
                     rdy     <= 1'b1;      // 最后一个地址的数据本拍已回
                     running <= 1'b0;
                 end else

@@ -42,6 +42,7 @@ module full_top #(
     //  EXT_FXPARAM : 0 = 内置示例效果器/主输出参数；1 = 由外部调度层驱动 ext_reverb_* … ext_master_vol
     parameter integer VOICE_SRC   = 0,
     parameter integer EXT_TABLE   = 0,
+    parameter integer MVOL_EXT    = 0,      // 1 = master volume driven by ext_master_vol
     parameter integer EXT_FXPARAM = 0,
 
     //  `ext_*` 的**复位钳位**开关（1 = 结构保证：复位期间强制钳成确定值；见 §2.4）
@@ -126,6 +127,11 @@ module full_top #(
     //  与 dbg_sd（sample_l，DAC 之前）对比，就能判断失真出在声部层还是后面的通道/效果层。
     output wire [23:0]      dbg_voice_aud,
 
+    //  2026-10-23 加：可视化用的音频抽头（接 sakiko 的 vis_top）
+    //  纯组合直连 sample_l/sample_r，**不新增任何寄存器**，对音频通路零影响。
+    output wire [15:0]      mon_l,
+    output wire [15:0]      mon_r,
+
 
     //  ⚠ PLL 复位保持（高有效，由外部驱动）：
     //    MS5351 配置完成之前必须**一直**把 PLL 按住 —— 否则它会锁到 MS5351 的
@@ -171,6 +177,7 @@ module full_top #(
     localparam integer USE_EXT_CH     = USE_EXT_VOICE;
     localparam integer USE_EXT_TABLE  = (EXT_TABLE   != 0) ? 1 : 0;
     localparam integer USE_EXT_FXPAR  = (EXT_FXPARAM != 0) ? 1 : 0;
+    localparam integer USE_MVOL_EXT = (MVOL_EXT != 0) ? 1 : 0;
 
     // ============================================================
     // 2. 内部上电复位（不用外部引脚，X 安全）
@@ -345,6 +352,10 @@ module full_top #(
         .x     (sample_l),
         .sd    (dbg_sd)
     );
+
+    //  ---- 2026-10-23：可视化音频抽头（给 vis_top，纯直连、无寄存器）----
+    assign mon_l = sample_l;
+    assign mon_r = sample_r;
 
     // ============================================================
     // 4. 声部时隙时序器（产生 slot / slot_vld）
@@ -556,10 +567,18 @@ module full_top #(
     // ============================================================
     // 11. 主输出处理
     // ============================================================
+    //  2026-10-25：主音量改为**移位档位**。
+    //  原因：vol 从常量 16383 变成变量后，24×14 乘法被综合成 LUT 乘法（LUT +1505），
+    //        且 20.3 ns 内跑不完 → 综合器重定时插了 +2180 个寄存器，仍 65 个违例。
+    //  改法：在进 master_chain 之前先按档位右移（6 dB/档，0..7 档 = 0~42 dB 衰减），
+    //        master_chain 的 vol 仍喂常量 16384（1.0），保持"常量乘法"不涨资源。
+    wire [2:0]        vol_sh  = 3'd7 - e_mvol_c[13:11];   // SysEx 值越大 → 移位越小（16383 = 不移位）
+    wire signed [23:0] mx_l_s = USE_MVOL_EXT ? ((mx_l) >>> vol_sh) : (mx_l);
+    wire signed [23:0] mx_r_s = USE_MVOL_EXT ? ((mx_r) >>> vol_sh) : (mx_r);
     master_chain #(.DC_ENABLE(1), .LIM_ENABLE(1)) u_master (
         .clk(clk_sys), .rst_n(sys_rst_n), .en(sample_stb),
-        .l_in(mx_l), .r_in(mx_r),
-        .vol      (USE_EXT_FXPAR ? e_mvol_c : 14'd16383),
+        .l_in(mx_l_s), .r_in(mx_r_s),
+        .vol      (14'd16383),        // 固定 1.0；主音量已在上面用移位实现
         .mute     (USE_EXT_FXPAR ? e_mute_c       : 1'b0),
         .test_mode(USE_EXT_FXPAR ? e_tmode_c  : test_mode),
         .sample_l(sample_l), .sample_r(sample_r)

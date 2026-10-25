@@ -82,7 +82,10 @@ module sched_subsystem #(
     input  wire [P*16-1:0] rs_env_value,
     input  wire [P*3-1:0]  rs_env_state,
     input  wire [P*32-1:0] rs_filter_ic1,
-    input  wire [P*32-1:0] rs_filter_ic2
+    input  wire [P*32-1:0] rs_filter_ic2,
+
+    //  2026-10-24: SysEx master volume (F0 7F dev 04 01 ll mm F7 -> grp3/idx0)
+    output wire [13:0]      g_master_vol_o
 );
     //========================================================================
     // midi_tick：位节拍（÷1573 = 31250 Hz），内部产生，免得外面再拉一根线
@@ -455,6 +458,16 @@ module sched_subsystem #(
                      ct_bank_msb, ct_bank_lsb, ct_pan_gL, ct_pan_gR,
                      ct_default_timbre, ct_note_count, ct_sust, ct_sost,
                      ev_note_ch, ev_cc_ch, ev_pc_ch, ev_par_idx, ev_par_grp, ev_par_data};
+
+    //  ---- 2026-10-24: SysEx master volume register (reset 16383 = full, 0 would mute) ----
+    reg [13:0] g_mvol;
+    always @(posedge clk or negedge rst_n_sync) begin
+        if (!rst_n_sync)
+            g_mvol <= 14'd16383;
+        else if (ev_par_wr && (ev_par_grp == 2'd3) && (ev_par_idx == 4'd0))
+            g_mvol <= ev_par_data[13:0];
+    end
+    assign g_master_vol_o = g_mvol;
 
 endmodule
 `default_nettype wire

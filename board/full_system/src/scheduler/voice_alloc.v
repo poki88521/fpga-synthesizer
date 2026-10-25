@@ -126,6 +126,7 @@ module voice_alloc #(
     reg [6:0] v_note [0:N-1];
     reg [3:0] v_ch   [0:N-1];
     reg       v_gate [0:N-1];
+    reg [15:0] v_vgain [0:N-1];   // 2026-10-25：记住每声部的力度增益（释放时照抄）
     reg [7:0] v_age  [0:N-1];
     reg [7:0] age_ctr;
     reg [5:0] ch_ncnt [0:NCH-1];
@@ -162,7 +163,12 @@ module voice_alloc #(
     function [15:0] vel_gain_fn;
         input [6:0] vel;
         begin
-            vel_gain_fn = {2'b0, vel, 7'd0};      // 线性近似，音色表 vel_sensitivity 待接
+            //  2026-10-24：vel_sensitivity 第一版 —— **平方曲线**（原来线性 vel<<7）
+        //      vel=127 → 127×127 = 16129，与原来的 16256 只差 0.09 dB（**最大响度不变**）
+        //      vel=64  → 4096（原来 8192，−6 dB），vel=32 → 1024（原来 4096，−12 dB）
+        //      ⇒ 轻按明显更柔、重按仍然能顶到满，符合钢琴手感
+        //  代价：一次 7×7 乘法，但在**分配器**里（每按一次键算一次，不是逐采样）→ 无时序风险
+        vel_gain_fn = {9'd0, vel} * {9'd0, vel};
         end
     endfunction
 
@@ -174,6 +180,7 @@ module voice_alloc #(
                 v_note[k] <= 7'd0;
                 v_ch[k]   <= 4'd0;
                 v_gate[k] <= 1'b0;
+        v_vgain[k] <= 16'd0;
                 v_age[k]  <= 8'd0;
             end
             for (k = 0; k < NCH; k = k + 1) ch_ncnt[k] <= 6'd0;
@@ -257,12 +264,12 @@ module voice_alloc #(
                     if (!evt_on) begin
                         // Note Off：只找"同通道 + 同 note + gate"的声部
                         if ((v_ch[scan_i] == evt_ch) &&
-                            (v_note[scan_i] == evt_key) && v_gate[scan_i]) begin
+                            (v_note[scan_i] == evt_key) && (v_ch[scan_i] == evt_ch) && v_gate[scan_i]) begin
                             if (cand_retrig == 5'h1f) cand_retrig <= scan_i;
                         end
                     end else begin
                         if ((v_ch[scan_i] == evt_ch) &&
-                            (v_note[scan_i] == evt_key) && v_gate[scan_i]) begin
+                            (v_note[scan_i] == evt_key) && (v_ch[scan_i] == evt_ch) && v_gate[scan_i]) begin
                             if (cand_retrig == 5'h1f) cand_retrig <= scan_i;   // 优先①
                         end
                         if (!v_gate[scan_i] && (scan_env_state == 3'd0)) begin
@@ -319,7 +326,9 @@ module voice_alloc #(
                         awr_ch      <= evt_ch;
                         awr_timbre  <= tm_slot;           // 由 timbre_map 依该通道的 program 决定
                         awr_gate    <= (tgt_op == OP_REL) ? 1'b0 : 1'b1;
-                        awr_vel_gain<= vel_gain_fn(evt_vel);
+                        awr_vel_gain <= (tgt_op == OP_REL) ? v_vgain[tgt_id] : vel_gain_fn(evt_vel);
+                        if (tgt_op != OP_REL)
+                            v_vgain[tgt_id] <= vel_gain_fn(evt_vel);
                         awr_age     <= age_ctr;
                         awr_fast_rel<= tgt_steal;
 

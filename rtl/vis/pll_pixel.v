@@ -90,7 +90,19 @@ module pll_pixel #(
         .DT0        ({gw_gnd, gw_gnd, gw_gnd, gw_gnd}),
         .DT1        ({gw_gnd, gw_gnd, gw_gnd, gw_gnd}),
         .DT2        ({gw_gnd, gw_gnd, gw_gnd, gw_gnd}),
-        .DT3        ({gw_gnd, gw_gnd, gw_gnd, gw_gnd})
+        .DT3        ({gw_gnd, gw_gnd, gw_gnd, gw_gnd}),
+        // ---- 以下都是 PLL 的 SSC / 动态相移 / 电荷泵 / 环路滤波配置口 ----
+        // 不用扩频和动态相移，按综合器默认值（全 0）显式接死，消掉 28 条 EX2565
+        .PSSEL      ({gw_gnd, gw_gnd, gw_gnd}),
+        .PSDIR      (gw_gnd),
+        .PSPULSE    (gw_gnd),
+        .SSCPOL     (gw_gnd),
+        .SSCON      (gw_gnd),
+        .SSCMDSEL   ({gw_gnd, gw_gnd, gw_gnd, gw_gnd, gw_gnd, gw_gnd, gw_gnd}),
+        .SSCMDSEL_FRAC({gw_gnd, gw_gnd, gw_gnd}),
+        .ICPSEL     ({gw_gnd, gw_gnd, gw_gnd, gw_gnd, gw_gnd, gw_gnd}),
+        .LPFRES     ({gw_gnd, gw_gnd, gw_gnd}),
+        .LPFCAP     ({gw_gnd, gw_gnd})
     );
 
 `ifdef SIMULATION

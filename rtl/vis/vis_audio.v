@@ -117,19 +117,22 @@ module vis_audio #(
     reg [11:0]       trig;
     reg signed [15:0] prev_s;
 
-    integer i;
-    initial begin
-        for (i = 0; i < BUF_N; i = i + 1) rbuf[i] = CX[10:0];   // 默认中线，防 X
-        wp     = 12'd0;
-        trig   = 12'd0;
-        prev_s = 16'sd0;
-    end
+    //  ⚠ 原版用 initial + for 循环把整块 RAM 刷成中线，BUF_N=4096 > 综合器
+    //     的循环上限 2000 → ERROR (EX3934)，vis_audio 整个模块被降级成黑盒。
+    //     改成"用写端口自己刷"：复位后花 BUF_N 拍（35 MHz 下约 117 µs）写满中线，
+    //     然后切到正常写入。没有循环，综合/布线都认，仿真里也不会留 X。
+    reg buf_ready;
 
     always @(posedge clk_px or negedge rst_px_n) begin
         if (!rst_px_n) begin
-            wp     <= 12'd0;
-            trig   <= 12'd0;
-            prev_s <= 16'sd0;
+            wp        <= 12'd0;
+            trig      <= 12'd0;
+            prev_s    <= 16'sd0;
+            buf_ready <= 1'b0;
+        end else if (!buf_ready) begin
+            rbuf[wp]  <= CX[10:0];                       // 刷中线，防上电花屏
+            wp        <= (wp == BUF_N-1) ? 12'd0 : (wp + 12'd1);
+            buf_ready <= (wp == BUF_N-1);                // 写完最后一格就算刷完
         end else if (wr_en) begin
             rbuf[wp] <= y_of(d_r);
             wp      <= (wp == BUF_N-1) ? 12'd0 : (wp + 12'd1);
@@ -144,6 +147,7 @@ module vis_audio #(
     //========================================================================
     //  5. 每帧锁相：start = trig - (WINDOW-1)
     //========================================================================
+    localparam [11:0] WINDOW_M1 = WINDOW - 1;   // 12 位常量，别让 32 位整数把减法撑宽（EX3791）
     reg [11:0] start;
     reg [17:0] acc;             // 列内相位（Q8）
 
@@ -152,7 +156,7 @@ module vis_audio #(
             start <= 12'd0;
             acc   <= 18'd0;
         end else begin
-            if (frame_stb) start <= trig - (WINDOW - 1);
+            if (frame_stb) start <= trig - WINDOW_M1;
 
             if (vld) begin
                 if (x == 10'd0) acc <= STEP_Q8[17:0];

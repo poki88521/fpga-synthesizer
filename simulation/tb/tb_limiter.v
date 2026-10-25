@@ -61,7 +61,7 @@ module tb_limiter;
         step(24'sd1000000);
         step(24'sd1000000);
         step(24'sd1000000);
-        step(24'sd1000000);      // 多跑一拍，确保最后一级输出寄存器已更新
+                step(24'sd1000000);`r`n        step(24'sd1000000);      // 2026-10-24：拆 4 级流水，延迟 3→4 拍
         $display("  输入 1000000 → 输出 %0d，增益 %0d", lo, g);
         if (lo !== 24'sd1000000) begin $display("  FAIL: 小信号没有原样通过"); errs = errs + 1; end
         if (g !== 16'd32768)     begin $display("  FAIL: 小信号时增益不是 1.0"); errs = errs + 1; end

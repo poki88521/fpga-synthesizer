@@ -112,7 +112,18 @@ module PLL #(
     input  wire [6:0] MDSEL, ODSEL0, ODSEL1, ODSEL2,
     input  wire [6:0] ODSEL3, ODSEL4, ODSEL5, ODSEL6,
     input  wire [2:0] MDSEL_FRAC, ODSEL0_FRAC,
-    input  wire [3:0] DT0, DT1, DT2, DT3
+    input  wire [3:0] DT0, DT1, DT2, DT3,
+    //  2026-10-23：pll_pixel.v（可视化像素时钟）显式接死了这些 SSC / 动态相移 /
+    //  电荷泵 / 环路滤波配置口。仿真 stub 原来没有这些端口 → iverilog 报
+    //  "port ``PSSEL'' is not a port of PLL_inst"。这里补齐（只用于仿真，
+    //  综合时用的是 Gowin 的真实原语，不受影响）。
+    input  wire [2:0] PSSEL,
+    input  wire       PSDIR, PSPULSE, SSCPOL, SSCON,
+    input  wire [6:0] SSCMDSEL,
+    input  wire [2:0] SSCMDSEL_FRAC,
+    input  wire [5:0] ICPSEL,
+    input  wire [2:0] LPFRES,
+    input  wire [1:0] LPFCAP
 );
     assign LOCK     = 1'b1;
     assign CLKOUT0  = CLKIN;
