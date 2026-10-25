@@ -117,7 +117,11 @@ module full_system #(
     output wire         lcd_en,      // A24
     output wire [5:0]   lcd_r,       // H19 J19 G25 H18 J18 K17（RGB666，高 6 位）
     output wire [5:0]   lcd_g,       // J16 K15 F22 G22 G21 G20
-    output wire [5:0]   lcd_b        // F20 G19 F19 F18 M17 M16
+    output wire [5:0]   lcd_b,        // F20 G19 F19 F18 M17 M16
+
+    // ---- 2026-10-25 加：延迟测量探针（示波器用）----
+    //    第一个『有门控且音频非零』的采样帧拉高，松开音后拉低（上升沿 = 出声时刻）
+    output wire         dbg_audio_on
 );
 
 assign dbg_led[3] = ~(dbg_evt_cnt != 22'd0);      // 同上，低电平点亮
@@ -154,7 +158,8 @@ assign dbg_led[3] = ~(dbg_evt_cnt != 22'd0);      // 同上，低电平点亮
     // ========================================================================
     wire         sample_stb;       // 全系统唯一提交时刻
     wire         rst_n_sync;
-    wire         clk_sys;          // full_top 的系统时钟（USE_PLL=1 时 = PLL 的 49.152 MHz）
+    wire         clk_sys;
+    wire [13:0]  g_master_vol_w;    // 2026-10-24: SysEx master volume          // full_top 的系统时钟（USE_PLL=1 时 = PLL 的 49.152 MHz）
     wire [P*24-1:0] voice_aud;     // 单声部层 → 通道层
     wire [P*24-1:0] voice_dbg_wave; // 调试探针：各泳道的 DDS 波表输出（只用泳道 0）
     wire [23:0]     dbg_va_w;       // 调试探针：voice_aud 泳道 0
@@ -187,6 +192,7 @@ assign dbg_led[3] = ~(dbg_evt_cnt != 22'd0);      // 同上，低电平点亮
         .VOICE_SRC        (1),      // 声部来自单声部层
         .EXT_TABLE        (1),      // 通道表来自调度层
         .EXT_FXPARAM      (0),      // 效果参数用内置默认（见文件头说明）
+        .MVOL_EXT         (1),           // 2026-10-24: master volume from SysEx
         .INTEG_CLAMP      (1)       // 结构保证：复位期间钳住 ext_*
     ) u_full_top (
         .clk50(clk50), .clk12288(clk12288),
@@ -208,7 +214,7 @@ assign dbg_led[3] = ~(dbg_evt_cnt != 22'd0);      // 同上，低电平点亮
         .ext_chorus_mix(16'sd0), .ext_chorus_return(16'sd0),
         .ext_delay_time(16'd0), .ext_delay_feedback(16'sd0),
         .ext_delay_mix(16'sd0), .ext_delay_return(16'sd0),
-        .ext_master_vol(14'd16383), .ext_mute(1'b0), .ext_test_mode(1'b0),
+        .ext_master_vol(g_master_vol_w), .ext_mute(1'b0), .ext_test_mode(1'b0),
 
         .midi_rx    (midi_rx),
         .pll_hold   (~ms_ok),          // MS5351 配好前把 PLL 按住（详见 full_top.v 端口注释）
@@ -312,7 +318,8 @@ assign dbg_led[3] = ~(dbg_evt_cnt != 22'd0);      // 同上，低电平点亮
 
         .rs_phase_acc(rs_phase_acc), .rs_env_value(rs_env_value),
         .rs_env_state(rs_env_state), .rs_filter_ic1(rs_filter_ic1),
-        .rs_filter_ic2(rs_filter_ic2)
+        .rs_filter_ic2(rs_filter_ic2),
+        .g_master_vol_o(g_master_vol_w)
     );
 
     // ========================================================================
@@ -378,21 +385,21 @@ assign dbg_led[3] = ~(dbg_evt_cnt != 22'd0);      // 同上，低电平点亮
         input [2:0] s;
         begin
             case (s)
-                //  槽 0  正弦   → 柔和铺底 / 风琴：慢起慢落、通透明亮、无谐振
+                //  槽 0  波表=钢琴（基频 85.7% + 4 次谐波 13.3%，2026-10-22 重建）→ LP 高截止、慢起 341 ms、长延音
                 3'd0: tp_of = {16'd30000, 16'd22000, 2'd0, 2'd0, 16'd2,   16'd1,  16'd24000, 16'd1  };
-                //  槽 1  正弦变体 → 钟琴 / 电钢：快起、有明显衰减尾巴
+                //  槽 1  波表=吉他（基频 97.3% + 2 次谐波 2.4%，2026-10-22 重建）→ LP 中截止、快起、有衰减尾巴
                 3'd1: tp_of = {16'd16384, 16'd16384, 2'd0, 2'd0, 16'd341, 16'd3,  16'd8000,  16'd2  };
-                //  槽 2  正弦变体 → Pad / 人声：极慢起、非常柔和
+                //  槽 2  波表=管风琴（旧表，未重建）→ LP 低截止 q 高、极慢起 682 ms、柔和
                 3'd2: tp_of = {16'd8480,  16'd22000, 2'd0, 2'd0, 16'd1,   16'd1,  16'd26000, 16'd1  };
-                //  槽 3  正弦变体 → 铜管：中速起、带通 + 中等谐振
+                //  槽 3  波表=长笛（旧表，未重建）→ **带通** f=5340 q=12000、中速起：偏铜管/木管
                 3'd3: tp_of = {16'd5340,  16'd12000, 2'd1, 2'd0, 16'd17,  16'd3,  16'd20000, 16'd2  };
-                //  槽 4  三角   → 长笛 / 木管：柔和带气声
+                //  槽 4  波表=旧合成波（未重建）→ LP f=12540 q=20000、柔和木管感
                 3'd4: tp_of = {16'd12540, 16'd20000, 2'd0, 2'd0, 16'd11,  16'd1,  16'd22000, 16'd2  };
                 //  槽 5  方波   → 电子主音：快速、尖锐、带通 + 较强谐振
                 3'd5: tp_of = {16'd16384, 16'd8000,  2'd1, 2'd0, 16'd137, 16'd7,  16'd20000, 16'd4  };
-                //  槽 6  锯齿   → 弦乐 / 贝斯：经典锯齿扫频，强谐振
+                //  槽 6  波表=旧合成波（未重建，基频强、谐波丰富）→ LP f=4277 **q=4000 强谐振**：锯齿扫频/弦乐感
                 3'd6: tp_of = {16'd4277,  16'd4000,  2'd0, 2'd0, 16'd34,  16'd3,  16'd20000, 16'd2  };
-                //  槽 7  变体   → 打击 / 拨弦：极快起、极快衰减、无持续
+                //  槽 7  波表=旧合成波（未重建）→ LP f=23170、极快起 682、无持续（sus=0）：拨弦/打击
                 3'd7: tp_of = {16'd23170, 16'd16384, 2'd0, 2'd0, 16'd682, 16'd14, 16'd0,     16'd1  };
                 default: tp_of = {16'd30000, 16'd16384, 2'd0, 2'd0, 16'd5, 16'd20, 16'd20000, 16'd8};
             endcase
@@ -566,6 +573,29 @@ assign dbg_led[3] = ~(dbg_evt_cnt != 22'd0);      // 同上，低电平点亮
     end
 
     assign dbg_led[3] = ~(dbg_evt_cnt != 22'd0);      // 同上，低电平点亮
+
+    //  ========================================================================
+    //  2026-10-25 加：延迟测量探针（只读，不影响音频通路）
+    //    判据：当前有音符门控（|voice_data_gate）且 |mon_l_w| 超阈值 -> 拉高
+    //    用途：示波器 CH1 接 MIDI 输入、CH2 接 B21，量『MIDI 字节 -> 出声』延迟
+    //  ========================================================================
+    wire signed [15:0] mon_abs = (mon_l_w[15]) ? -$signed(mon_l_w) : $signed(mon_l_w);
+    reg                dbg_audio_on_r;
+    reg  [15:0]        lat_frames;
+
+    always @(posedge clk_sys or negedge rst_n_sync) begin
+        if (!rst_n_sync) begin
+            dbg_audio_on_r <= 1'b0;
+            lat_frames     <= 16'd0;
+        end else if (sample_stb) begin
+            dbg_audio_on_r <= (|voice_data_gate) && (mon_abs >= 16'sd128);
+            if (!(|voice_data_gate))
+                lat_frames <= 16'd0;
+            else if (lat_frames != 16'hFFFF)
+                lat_frames <= lat_frames + 16'd1;
+        end
+    end
+    assign dbg_audio_on = dbg_audio_on_r;
 
 endmodule
 `default_nettype wire
