@@ -496,7 +496,8 @@ module full_top #(
         //     pf_* 在 slot_vld 那一拍就更新成**下一个时隙**的声部了，
         //     于是 pf_gate/pf_ch 相对音频"提前一个时隙" → 门控与音频不匹配 → 全静音。
         //     ext_data_gate / ext_data_ch 是 voice_mono 在 dds_en（与音频同拍）锁存的。
-        .vld ((test_mode || !USE_EXT_VOICE) ? lane_vld : ext_data_gate),
+        .vld ((test_mode || !USE_EXT_VOICE) ? lane_vld : {P{1'b1}}),   // 2026-10-25 修：原来接 ext_data_gate（= 按键门控）→ 松键瞬间该路音频被剔除，
+        //              现在恒为 1：音频是否可闻由 ADSR 的 env 决定（env→0 才是静音）
         .ch_in((test_mode || !USE_EXT_VOICE) ? lane_ch : ext_data_ch),
         .aud_in(voice_aud),
         .volume(volume_f), .expression(expr_f),
@@ -537,7 +538,7 @@ module full_top #(
         //  自检模式下用内置示例值；集成模式（EXT_FXPARAM=1）由调度层驱动
         .reverb_size   (USE_EXT_FXPAR ? e_rvsz_c    : 16'sd26000),
         .reverb_decay  (USE_EXT_FXPAR ? e_rvdec_c   : 16'sd31000),
-        .reverb_damping(USE_EXT_FXPAR ? e_rvdmp_c : 16'sd9000),
+        .reverb_damping(USE_EXT_FXPAR ? e_rvdmp_c : 16'sd24576),  // 2026-10-27: 14000→24576（0.43→0.75）。实测混响尾巴的 3-8k 比音符段还亮 7 dB，高频衰减慢 = 沙沙声；damping 越大每趟吸收越多高频。
         .reverb_pre_delay(USE_EXT_FXPAR ? e_rvpd_c : 16'd0),
         .reverb_return (USE_EXT_FXPAR ? e_rvret_c  : 16'sd26000),  // 2026-10-23: 32767→26000，湿声 0.45→0.36 FS，避免 main_mix 削顶
         .chorus_rate   (USE_EXT_FXPAR ? e_chrt_c    : 16'd300),

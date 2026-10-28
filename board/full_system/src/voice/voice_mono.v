@@ -245,7 +245,7 @@ module voice_mono (
     //  ⚠ 打一拍再用：env_value 是 4 选 1 mux 的输出，历史上这条 mux 的布线
     //     曾把 audio_out 路径拖到 −0.79 ns，不能让 mux+减法直接进 SVF 的系数乘法。
     //  ============================================================
-    wire [15:0] env_dip = (16'd32767 - env_value) >> 4;
+    wire [15:0] env_dip = (16'd32767 - env_value) >> 5;   // 2026-10-26 深度减半：原 >>4 在强谐振音色上会让谐振峰明显滑动，听起来像音高在飘
     reg  [15:0] f_mod_r;
 
     always @(posedge clk or negedge rst_n_sync) begin
