@@ -107,16 +107,34 @@ module fx_delay #(
     // ⚠ 而且**不能**写成 ({{(48-(AW+16)){p[AW+15]}}, p} >>> 15)：那个移位量是
     //   48-(24+16)=8 位符号 + 40 位乘积 = 48 位，>>>15 实际变成 >>>30（半量程
     //   直接归零）。必须把 operands 显式扩展到 48 位再乘，>>>15 才是纯算术右移。
-    wire signed [47:0]    fbl_s = ($signed({{24{wl[AW-1]}}, wl}) * $signed(p_fb)) >>> 15;
-    wire signed [47:0]    fbr_s = ($signed({{24{wr[AW-1]}}, wr}) * $signed(p_fb)) >>> 15;
+        //  ======================================================================
+    //  2026-10-28 加：在"RAM 读出 → 反馈乘法"之间插一级寄存
+    //    原因：P&R 报最差路径 −2.184 ns，167 个违例里绝大多数是
+    //          u_fx/g_del/mem_*_ADBREG（BSRAM 输出寄存器）→ wdata_*（写回）
+    //          —— 中间是 24×16 变量乘法 + 48 位加法 + sat24，22.5 ns 跑不完
+    //    代价：延迟时间多 1 个采样（+20.8 µs）、湿声晚 1 拍，听感无影响
+    //  ======================================================================
+    reg signed [AW-1:0] wl_r, wr_r;
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            wl_r <= {AW{1'b0}};
+            wr_r <= {AW{1'b0}};
+        end else begin
+            wl_r <= wl;
+            wr_r <= wr;
+        end
+    end
+
+wire signed [47:0]    fbl_s = ($signed({{24{wl_r[AW-1]}}, wl_r}) * $signed(p_fb)) >>> 15;
+    wire signed [47:0]    fbr_s = ($signed({{24{wr_r[AW-1]}}, wr_r}) * $signed(p_fb)) >>> 15;
     wire signed [47:0] wl_n = fbl_s + $signed({{24{bl[AW-1]}}, bl});
     wire signed [47:0] wr_n = fbr_s + $signed({{24{br[AW-1]}}, br});
 
     // 内部干湿比
     wire signed [47:0] outl_p = ($signed({{24{bl[AW-1]}}, bl}) * $signed({1'b0, onem})
-                               + $signed({{24{wl[AW-1]}}, wl}) * $signed({1'b0, mixx})) >>> 15;
+                               + $signed({{24{wl_r[AW-1]}}, wl_r}) * $signed({1'b0, mixx})) >>> 15;
     wire signed [47:0] outr_p = ($signed({{24{br[AW-1]}}, br}) * $signed({1'b0, onem})
-                               + $signed({{24{wr[AW-1]}}, wr}) * $signed({1'b0, mixx})) >>> 15;
+                               + $signed({{24{wr_r[AW-1]}}, wr_r}) * $signed({1'b0, mixx})) >>> 15;
     wire signed [AW-1:0]  outl   = sat24(outl_p);
     wire signed [AW-1:0]  outr   = sat24(outr_p);
 

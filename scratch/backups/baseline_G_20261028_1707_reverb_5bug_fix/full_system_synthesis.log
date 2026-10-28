@@ -1,0 +1,184 @@
+GowinSynthesis start
+Running parser ...
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\channel\chan_buf.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\channel\chan_coef.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\channel\chan_layer.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\channel\send_bus.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\common\i2c_mst.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\common\ms5351_init.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\common\norm_sat.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\common\pll_49m.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\common\pt8211_tx.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\common\reset_sync.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\common\sat24.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\global\dc_block.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\global\dither16.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\global\fx_chorus.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\global\fx_reverb.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\global\fx_top.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\global\main_mix.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\global\master_chain.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\global\master_volume.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\global\soft_limiter.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\ch_lfo.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\chan_param_shadow.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\chan_table.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\midi_arb.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\midi_filter.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\midi_parse.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\sched_subsystem.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\timbre_map.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\voice_alloc.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\voice_fetch.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\top\full_system.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\top\full_top.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\top\sd_out.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\top\test_voice_gen.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\top\voice_slot_seq.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\vis\lcd_800x480.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\vis\pll_pixel.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\vis\vis_audio.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\vis\vis_top.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\vis\wave_render.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\voice\adsr_vca.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\voice\dds_voice.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\voice\svf_voice.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\voice\voice_mono.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\voice\wave_fetch.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\voice\wave_table_rom.v'
+Analyzing Verilog file 'D:\code\fpga-synthesizer\develop\board\full_system\src\global\fx_delay.v'
+Compiling module 'full_system'("D:\code\fpga-synthesizer\develop\board\full_system\src\top\full_system.v":33)
+Compiling module 'ms5351_init'("D:\code\fpga-synthesizer\develop\board\full_system\src\common\ms5351_init.v":32)
+Compiling module 'i2c_mst'("D:\code\fpga-synthesizer\develop\board\full_system\src\common\i2c_mst.v":13)
+Compiling module 'full_top(USE_PLL=1,STRIDE=32,VOICE_SRC=1,EXT_TABLE=1,MVOL_EXT=1)'("D:\code\fpga-synthesizer\develop\board\full_system\src\top\full_top.v":29)
+WARN  (EX3780) : Using initial value of 'volume' since it is never assigned("D:\code\fpga-synthesizer\develop\board\full_system\src\top\full_top.v":452)
+Compiling module 'pll_49m(USE_EXT_RST=1)'("D:\code\fpga-synthesizer\develop\board\full_system\src\common\pll_49m.v":42)
+WARN  (EX2565) : Input 'PSSEL[2]' on this instance is undriven. Assigning to 0, simulation mismatch possible. Please assign the input or remove the declaration("D:\code\fpga-synthesizer\develop\board\full_system\src\common\pll_49m.v":119)
+WARN  (EX2565) : Input 'PSSEL[1]' on this instance is undriven. Assigning to 0, simulation mismatch possible. Please assign the input or remove the declaration("D:\code\fpga-synthesizer\develop\board\full_system\src\common\pll_49m.v":119)
+WARN  (EX2565) : Input 'PSSEL[0]' on this instance is undriven. Assigning to 0, simulation mismatch possible. Please assign the input or remove the declaration("D:\code\fpga-synthesizer\develop\board\full_system\src\common\pll_49m.v":119)
+WARN  (EX2565) : Input 'PSDIR' on this instance is undriven. Assigning to 0, simulation mismatch possible. Please assign the input or remove the declaration("D:\code\fpga-synthesizer\develop\board\full_system\src\common\pll_49m.v":119)
+WARN  (EX2565) : Input 'PSPULSE' on this instance is undriven. Assigning to 0, simulation mismatch possible. Please assign the input or remove the declaration("D:\code\fpga-synthesizer\develop\board\full_system\src\common\pll_49m.v":119)
+WARN  (EX2565) : Input 'SSCPOL' on this instance is undriven. Assigning to 0, simulation mismatch possible. Please assign the input or remove the declaration("D:\code\fpga-synthesizer\develop\board\full_system\src\common\pll_49m.v":119)
+WARN  (EX2565) : Input 'SSCON' on this instance is undriven. Assigning to 0, simulation mismatch possible. Please assign the input or remove the declaration("D:\code\fpga-synthesizer\develop\board\full_system\src\common\pll_49m.v":119)
+WARN  (EX2565) : Input 'SSCMDSEL[6]' on this instance is undriven. Assigning to 0, simulation mismatch possible. Please assign the input or remove the declaration("D:\code\fpga-synthesizer\develop\board\full_system\src\common\pll_49m.v":119)
+WARN  (EX2565) : Input 'SSCMDSEL[5]' on this instance is undriven. Assigning to 0, simulation mismatch possible. Please assign the input or remove the declaration("D:\code\fpga-synthesizer\develop\board\full_system\src\common\pll_49m.v":119)
+WARN  (EX2565) : Input 'SSCMDSEL[4]' on this instance is undriven. Assigning to 0, simulation mismatch possible. Please assign the input or remove the declaration("D:\code\fpga-synthesizer\develop\board\full_system\src\common\pll_49m.v":119)
+WARN  (EX2565) : Input 'SSCMDSEL[3]' on this instance is undriven. Assigning to 0, simulation mismatch possible. Please assign the input or remove the declaration("D:\code\fpga-synthesizer\develop\board\full_system\src\common\pll_49m.v":119)
+WARN  (EX2565) : Input 'SSCMDSEL[2]' on this instance is undriven. Assigning to 0, simulation mismatch possible. Please assign the input or remove the declaration("D:\code\fpga-synthesizer\develop\board\full_system\src\common\pll_49m.v":119)
+WARN  (EX2565) : Input 'SSCMDSEL[1]' on this instance is undriven. Assigning to 0, simulation mismatch possible. Please assign the input or remove the declaration("D:\code\fpga-synthesizer\develop\board\full_system\src\common\pll_49m.v":119)
+WARN  (EX2565) : Input 'SSCMDSEL[0]' on this instance is undriven. Assigning to 0, simulation mismatch possible. Please assign the input or remove the declaration("D:\code\fpga-synthesizer\develop\board\full_system\src\common\pll_49m.v":119)
+WARN  (EX2565) : Input 'SSCMDSEL_FRAC[2]' on this instance is undriven. Assigning to 0, simulation mismatch possible. Please assign the input or remove the declaration("D:\code\fpga-synthesizer\develop\board\full_system\src\common\pll_49m.v":119)
+WARN  (EX2565) : Input 'SSCMDSEL_FRAC[1]' on this instance is undriven. Assigning to 0, simulation mismatch possible. Please assign the input or remove the declaration("D:\code\fpga-synthesizer\develop\board\full_system\src\common\pll_49m.v":119)
+WARN  (EX2565) : Input 'SSCMDSEL_FRAC[0]' on this instance is undriven. Assigning to 0, simulation mismatch possible. Please assign the input or remove the declaration("D:\code\fpga-synthesizer\develop\board\full_system\src\common\pll_49m.v":119)
+WARN  (EX2565) : Input 'ICPSEL[5]' on this instance is undriven. Assigning to 0, simulation mismatch possible. Please assign the input or remove the declaration("D:\code\fpga-synthesizer\develop\board\full_system\src\common\pll_49m.v":119)
+WARN  (EX2565) : Input 'ICPSEL[4]' on this instance is undriven. Assigning to 0, simulation mismatch possible. Please assign the input or remove the declaration("D:\code\fpga-synthesizer\develop\board\full_system\src\common\pll_49m.v":119)
+WARN  (EX2565) : Input 'ICPSEL[3]' on this instance is undriven. Assigning to 0, simulation mismatch possible. Please assign the input or remove the declaration("D:\code\fpga-synthesizer\develop\board\full_system\src\common\pll_49m.v":119)
+WARN  (EX2565) : Input 'ICPSEL[2]' on this instance is undriven. Assigning to 0, simulation mismatch possible. Please assign the input or remove the declaration("D:\code\fpga-synthesizer\develop\board\full_system\src\common\pll_49m.v":119)
+WARN  (EX2565) : Input 'ICPSEL[1]' on this instance is undriven. Assigning to 0, simulation mismatch possible. Please assign the input or remove the declaration("D:\code\fpga-synthesizer\develop\board\full_system\src\common\pll_49m.v":119)
+WARN  (EX2565) : Input 'ICPSEL[0]' on this instance is undriven. Assigning to 0, simulation mismatch possible. Please assign the input or remove the declaration("D:\code\fpga-synthesizer\develop\board\full_system\src\common\pll_49m.v":119)
+WARN  (EX2565) : Input 'LPFRES[2]' on this instance is undriven. Assigning to 0, simulation mismatch possible. Please assign the input or remove the declaration("D:\code\fpga-synthesizer\develop\board\full_system\src\common\pll_49m.v":119)
+WARN  (EX2565) : Input 'LPFRES[1]' on this instance is undriven. Assigning to 0, simulation mismatch possible. Please assign the input or remove the declaration("D:\code\fpga-synthesizer\develop\board\full_system\src\common\pll_49m.v":119)
+WARN  (EX2565) : Input 'LPFRES[0]' on this instance is undriven. Assigning to 0, simulation mismatch possible. Please assign the input or remove the declaration("D:\code\fpga-synthesizer\develop\board\full_system\src\common\pll_49m.v":119)
+WARN  (EX2565) : Input 'LPFCAP[1]' on this instance is undriven. Assigning to 0, simulation mismatch possible. Please assign the input or remove the declaration("D:\code\fpga-synthesizer\develop\board\full_system\src\common\pll_49m.v":119)
+WARN  (EX2565) : Input 'LPFCAP[0]' on this instance is undriven. Assigning to 0, simulation mismatch possible. Please assign the input or remove the declaration("D:\code\fpga-synthesizer\develop\board\full_system\src\common\pll_49m.v":119)
+Compiling module 'pt8211_tx'("D:\code\fpga-synthesizer\develop\board\full_system\src\common\pt8211_tx.v":28)
+Compiling module 'sd_out'("D:\code\fpga-synthesizer\develop\board\full_system\src\top\sd_out.v":35)
+Compiling module 'voice_slot_seq(STRIDE=32)'("D:\code\fpga-synthesizer\develop\board\full_system\src\top\voice_slot_seq.v":30)
+Compiling module 'test_voice_gen'("D:\code\fpga-synthesizer\develop\board\full_system\src\top\test_voice_gen.v":22)
+Compiling module 'chan_layer'("D:\code\fpga-synthesizer\develop\board\full_system\src\channel\chan_layer.v":32)
+Compiling module 'chan_buf'("D:\code\fpga-synthesizer\develop\board\full_system\src\channel\chan_buf.v":18)
+Compiling module 'chan_coef'("D:\code\fpga-synthesizer\develop\board\full_system\src\channel\chan_coef.v":27)
+Compiling module 'send_bus'("D:\code\fpga-synthesizer\develop\board\full_system\src\channel\send_bus.v":34)
+Compiling module 'fx_top'("D:\code\fpga-synthesizer\develop\board\full_system\src\global\fx_top.v":29)
+Compiling module 'fx_reverb'("D:\code\fpga-synthesizer\develop\board\full_system\src\global\fx_reverb.v":87)
+Extracting RAM for identifier 'rmem'("D:\code\fpga-synthesizer\develop\board\full_system\src\global\fx_reverb.v":301)
+WARN  (EX3791) : Expression size 17 truncated to fit in target size 16("D:\code\fpga-synthesizer\develop\board\full_system\src\global\fx_reverb.v":358)
+WARN  (EX3791) : Expression size 17 truncated to fit in target size 16("D:\code\fpga-synthesizer\develop\board\full_system\src\global\fx_reverb.v":359)
+WARN  (EX3791) : Expression size 5 truncated to fit in target size 2("D:\code\fpga-synthesizer\develop\board\full_system\src\global\fx_reverb.v":389)
+Compiling module 'fx_chorus'("D:\code\fpga-synthesizer\develop\board\full_system\src\global\fx_chorus.v":26)
+Extracting RAM for identifier 'mem_l'("D:\code\fpga-synthesizer\develop\board\full_system\src\global\fx_chorus.v":156)
+Extracting RAM for identifier 'mem_r'("D:\code\fpga-synthesizer\develop\board\full_system\src\global\fx_chorus.v":157)
+Compiling module 'fx_delay'("D:\code\fpga-synthesizer\develop\board\full_system\src\global\fx_delay.v":26)
+Extracting RAM for identifier 'mem_l'("D:\code\fpga-synthesizer\develop\board\full_system\src\global\fx_delay.v":63)
+Extracting RAM for identifier 'mem_r'("D:\code\fpga-synthesizer\develop\board\full_system\src\global\fx_delay.v":64)
+Compiling module 'main_mix'("D:\code\fpga-synthesizer\develop\board\full_system\src\global\main_mix.v":24)
+Compiling module 'master_chain'("D:\code\fpga-synthesizer\develop\board\full_system\src\global\master_chain.v":17)
+Compiling module 'master_volume'("D:\code\fpga-synthesizer\develop\board\full_system\src\global\master_volume.v":25)
+Compiling module 'norm_sat(SHIFT=12)'("D:\code\fpga-synthesizer\develop\board\full_system\src\common\norm_sat.v":20)
+Compiling module 'soft_limiter'("D:\code\fpga-synthesizer\develop\board\full_system\src\global\soft_limiter.v":40)
+WARN  (EX3791) : Expression size 48 truncated to fit in target size 16("D:\code\fpga-synthesizer\develop\board\full_system\src\global\soft_limiter.v":197)
+Compiling module 'dc_block'("D:\code\fpga-synthesizer\develop\board\full_system\src\global\dc_block.v":18)
+Compiling module 'norm_sat'("D:\code\fpga-synthesizer\develop\board\full_system\src\common\norm_sat.v":20)
+Compiling module 'dither16'("D:\code\fpga-synthesizer\develop\board\full_system\src\global\dither16.v":21)
+Compiling module 'vis_top'("D:\code\fpga-synthesizer\develop\board\full_system\src\vis\vis_top.v":12)
+Compiling module 'pll_pixel'("D:\code\fpga-synthesizer\develop\board\full_system\src\vis\pll_pixel.v":30)
+Compiling module 'lcd_800x480'("D:\code\fpga-synthesizer\develop\board\full_system\src\vis\lcd_800x480.v":43)
+Compiling module 'vis_audio'("D:\code\fpga-synthesizer\develop\board\full_system\src\vis\vis_audio.v":34)
+Extracting RAM for identifier 'rbuf'("D:\code\fpga-synthesizer\develop\board\full_system\src\vis\vis_audio.v":114)
+Compiling module 'wave_render'("D:\code\fpga-synthesizer\develop\board\full_system\src\vis\wave_render.v":31)
+WARN  (EX3073) : Port 'phase' remains unconnected for this instance("D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\sched_subsystem.v":321)
+Compiling module 'sched_subsystem(STRIDE=32)'("D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\sched_subsystem.v":32)
+Compiling module 'midi_parse(PORT_ID=2'b00)'("D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\midi_parse.v":24)
+Extracting RAM for identifier 'sxbuf'("D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\midi_parse.v":147)
+Compiling module 'midi_parse(PORT_ID=2'b01)'("D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\midi_parse.v":24)
+Extracting RAM for identifier 'sxbuf'("D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\midi_parse.v":147)
+Compiling module 'midi_parse(PORT_ID=2'b10)'("D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\midi_parse.v":24)
+Extracting RAM for identifier 'sxbuf'("D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\midi_parse.v":147)
+Compiling module 'midi_parse(PORT_ID=2'b11)'("D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\midi_parse.v":24)
+Extracting RAM for identifier 'sxbuf'("D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\midi_parse.v":147)
+Compiling module 'midi_arb'("D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\midi_arb.v":29)
+Compiling module 'midi_filter'("D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\midi_filter.v":18)
+Compiling module 'chan_table'("D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\chan_table.v":42)
+Extracting RAM for identifier 'pan_gl_tbl'("D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\chan_table.v":122)
+Extracting RAM for identifier 'pan_gr_tbl'("D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\chan_table.v":123)
+Extracting RAM for identifier 'bend_tbl'("D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\chan_table.v":128)
+Extracting RAM for identifier 'fifo'("D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\chan_table.v":177)
+WARN  (EX3791) : Expression size 17 truncated to fit in target size 16("D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\chan_table.v":326)
+WARN  (EX3791) : Expression size 17 truncated to fit in target size 16("D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\chan_table.v":285)
+WARN  (EX3791) : Expression size 17 truncated to fit in target size 16("D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\chan_table.v":299)
+Compiling module 'chan_param_shadow'("D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\chan_param_shadow.v":26)
+Compiling module 'ch_lfo'("D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\ch_lfo.v":17)
+WARN  (EX3791) : Expression size 29 truncated to fit in target size 16("D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\ch_lfo.v":45)
+Compiling module 'voice_alloc'("D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\voice_alloc.v":30)
+Extracting RAM for identifier 'efifo'("D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\voice_alloc.v":137)
+Compiling module 'timbre_map'("D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\timbre_map.v":19)
+Compiling module 'voice_fetch'("D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\voice_fetch.v":33)
+Extracting RAM for identifier 'inc_tbl'("D:\code\fpga-synthesizer\develop\board\full_system\src\scheduler\voice_fetch.v":274)
+Compiling module 'wave_fetch(INIT_FILE="data\wave_table.hex")'("D:\code\fpga-synthesizer\develop\board\full_system\src\voice\wave_fetch.v":27)
+Compiling module 'wave_table_rom(INIT_FILE="data\wave_table.hex")'("D:\code\fpga-synthesizer\develop\board\full_system\src\voice\wave_table_rom.v":19)
+Extracting RAM for identifier 'mem'("D:\code\fpga-synthesizer\develop\board\full_system\src\voice\wave_table_rom.v":30)
+Compiling module 'voice_mono'("D:\code\fpga-synthesizer\develop\board\full_system\src\voice\voice_mono.v":33)
+Compiling module 'reset_sync'("D:\code\fpga-synthesizer\develop\board\full_system\src\common\reset_sync.v":15)
+Compiling module 'dds_voice'("D:\code\fpga-synthesizer\develop\board\full_system\src\voice\dds_voice.v":29)
+WARN  (EX3791) : Expression size 25 truncated to fit in target size 17("D:\code\fpga-synthesizer\develop\board\full_system\src\voice\dds_voice.v":96)
+Compiling module 'svf_voice'("D:\code\fpga-synthesizer\develop\board\full_system\src\voice\svf_voice.v":22)
+Compiling module 'adsr_vca'("D:\code\fpga-synthesizer\develop\board\full_system\src\voice\adsr_vca.v":26)
+Compiling module 'sat24(ACCW=64,SHIFT=0)'("D:\code\fpga-synthesizer\develop\board\full_system\src\common\sat24.v":21)
+NOTE  (EX0101) : Current top module is "full_system"
+[5%] Running netlist conversion ...
+Running device independent optimization ...
+[10%] Optimizing Phase 0 completed
+[15%] Optimizing Phase 1 completed
+[25%] Optimizing Phase 2 completed
+Running inference ...
+[30%] Inferring Phase 0 completed
+[40%] Inferring Phase 1 completed
+[50%] Inferring Phase 2 completed
+[55%] Inferring Phase 3 completed
+Running technical mapping ...
+[60%] Tech-Mapping Phase 0 completed
+[65%] Tech-Mapping Phase 1 completed
+[75%] Tech-Mapping Phase 2 completed
+[80%] Tech-Mapping Phase 3 completed
+[90%] Tech-Mapping Phase 4 completed
+WARN  (NL0002) : The module "reset_sync" instantiated to "u_rst" is swept in optimizing("D:\code\fpga-synthesizer\develop\board\full_system\src\voice\voice_mono.v":103)
+WARN  (NL0002) : The module "reset_sync" instantiated to "u_rst" is swept in optimizing("D:\code\fpga-synthesizer\develop\board\full_system\src\voice\voice_mono.v":103)
+WARN  (NL0002) : The module "reset_sync" instantiated to "u_rst" is swept in optimizing("D:\code\fpga-synthesizer\develop\board\full_system\src\voice\voice_mono.v":103)
+WARN  (NL0002) : The module "reset_sync" instantiated to "u_rst" is swept in optimizing("D:\code\fpga-synthesizer\develop\board\full_system\src\voice\voice_mono.v":103)
+WARN  (NL0002) : The module "reset_sync" instantiated to "u_rst" is swept in optimizing("D:\code\fpga-synthesizer\develop\board\full_system\src\voice\voice_mono.v":103)
+WARN  (NL0002) : The module "reset_sync" instantiated to "u_rst" is swept in optimizing("D:\code\fpga-synthesizer\develop\board\full_system\src\voice\voice_mono.v":103)
+WARN  (NL0002) : The module "reset_sync" instantiated to "u_rst" is swept in optimizing("D:\code\fpga-synthesizer\develop\board\full_system\src\voice\voice_mono.v":103)
+[95%] Generate netlist file "D:\code\fpga-synthesizer\develop\board\full_system\impl\gwsynthesis\full_system.vg" completed
+WARN  (CK3000) : Can't calculate clocks' relationship between: "u_full_top/g_pll.u_pll/PLL_inst/CLKOUT0.default_gen_clk" and "u_vis/u_pll/PLL_inst/CLKOUT0.default_gen_clk"
+[100%] Generate report file "D:\code\fpga-synthesizer\develop\board\full_system\impl\gwsynthesis\full_system_syn.rpt.html" completed
+GowinSynthesis finish

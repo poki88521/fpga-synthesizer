@@ -1,0 +1,170 @@
+//============================================================================
+//  full_top 物理约束（模块三完整链路）
+//
+//  引脚全部取自官方 Pro 例程 audio/audio_sinewave/src/audio.cst、
+//  官方 pinout UG986（Pin List FPG676A 页），并经**上板实测确认**。
+//
+//  ⚠ N22 是 **USR_CLK_IN（时钟输入）**，来自 MS5351 U2(PLL1) 的 CLK2，
+//    实测输出 **24.576 MHz**。**绝不能**把它当 LED / 输出用（会与 MS5351 对驱）。
+//    旧版 i2s_test.cst 曾把 N22 标成 "USR_LED.5"，那是错的。
+//============================================================================
+
+// ---------- 时钟 ----------
+// P16：板载 50 MHz 有源晶振（SOM），USE_PLL=0 时作为主时钟
+//   【实测】P16 有效（LED 心跳闪烁）；V22 无效，勿用。
+IO_LOC "clk50"    P16;
+IO_PORT "clk50"    IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+
+// N22：USR_CLK_IN，MS5351 U2(PLL1) CLK2 输出 **24.576 MHz**，USE_PLL=1 时用
+//   经 PLL(IDIV=1,FBDIV=1,MDIV=32,ODIV0=16) → 49.152 MHz（**已上板实测锁定**）
+//   取到它需要 TWI mux 档位 3（SEL2/1/0 = 0/1/1，即 N19/P19/P26）
+IO_LOC "clk12288" N22;
+IO_PORT "clk12288" IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+
+// ---------- 音频：PT8211 ----------
+IO_LOC "HP_BCK" E22;      // 位时钟  BANK5
+IO_PORT "HP_BCK" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=12 BANK_VCCIO=3.3;
+
+IO_LOC "HP_WS"  F24;      // 声道选择 BANK4
+IO_PORT "HP_WS"  IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=12 BANK_VCCIO=3.3;
+
+IO_LOC "HP_DIN" G24;      // 串行数据 BANK4
+IO_PORT "HP_DIN" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=12 BANK_VCCIO=3.3;
+
+// ---------- 功放使能：Pro 板高电平有效（Dock 板相反，别抄错）----------
+IO_LOC "PA_EN" H17;       // BANK5
+IO_PORT "PA_EN" IO_TYPE=LVCMOS33 PULL_MODE=DOWN DRIVE=12 BANK_VCCIO=3.3;
+
+// 注：full_top **没有复位输入端口**（复位只用内部 POR，见 full_top.v 说明），
+//     所以这里不需要给 rst_n 任何约束。
+
+//============================================================================
+//  以下为 **full_system**（集成顶层，上板 Top Module）新增端口的约束
+//  —— 2026-10-08 poki 补
+//
+//  full_system = full_top + sched_subsystem + voice_mono×8 + 共享波表，
+//  是上板时的 Top Module，所以加载约束请用**本文件**
+//  （它同时覆盖 full_top 的端口和 full_system 新增的端口）。
+//============================================================================
+
+// ---------- MIDI 串行输入（4 路）----------
+// ⚠ 板上没有专用 MIDI 接口，需外接接收电路（光耦 + 限流电阻）经 PMOD 接入。
+//   选 **PMOD2_IO0~IO3**：引脚号取自 board/i2s_wave_test.cst（示波器测点）与
+//   board/ms5351_test.cst（调试口）—— 两处都上板实测用过，且都是普通 IO；
+//   它们在最终系统里不再使用，正好复用。
+//   UART 空闲态为高 → PULL_MODE=UP，与 MIDI 电流环的空闲逻辑一致。
+IO_LOC "midi_rx[0]" C21;                          // PMOD2_IO0
+IO_PORT "midi_rx[0]" IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
+
+IO_LOC "midi_rx[1]" B20;                          // PMOD2_IO1
+IO_PORT "midi_rx[1]" IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
+
+IO_LOC "midi_rx[2]" B19;                          // PMOD2_IO2
+IO_PORT "midi_rx[2]" IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
+
+//  ⚠ midi_rx[3] 曾试接到 N16（原理图里的 FPGA_RXD），但 P&R 报：
+//       PR2017 'midi_rx[3]' cannot be placed ... the location is a dedicated pin (CPU)
+//       PR2028 The constrained location is useless in current package
+//    N16 是**专用引脚**（JTAG & CONFIG 那节的配置接口），不能当普通 IO。
+//    所以退回 PMOD2_IO3。
+//    想省掉光耦、用板载 USB 串口灌 MIDI 的话，需要另找可用的 UART 引脚（待查 pinout 手册）。
+IO_LOC "midi_rx[3]" A17;                          // PMOD2_IO3
+IO_PORT "midi_rx[3]" IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
+
+// ---------- MS5351 配置（I2C + TWI 复用器）----------
+//  full_system 内部的 ms5351_init 用 clk50 驱动，上电把 CLK2 配成 24.576 MHz
+//  （MS2 ÷32）。没有这一步，MS5351 会停在默认 16 MHz → PLL 锁到 16 MHz
+//  → 输出 ≈32 MHz 而不是 49.152 MHz → 采样率与 MIDI 波特率全错。
+//  引脚取自 board/pll_test/pll_test.cst（上板实测配置成功的那一套）。
+IO_LOC "scl" K25;                                 // IIC_SCL_MAIN
+IO_PORT "scl" IO_TYPE=LVCMOS33 DRIVE=8 PULL_MODE=UP BANK_VCCIO=3.3;
+
+IO_LOC "sda" K26;                                 // IIC_SDA_MAIN（inout）
+IO_PORT "sda" IO_TYPE=LVCMOS33 DRIVE=8 PULL_MODE=UP BANK_VCCIO=3.3;
+
+// TWI 复用器选择。实测**档位 3**（SEL2/1/0 = 0/1/1）能取到 N22；
+// ms5351_init 会从 0 扫到 7 自动找到它，这里只是把三个脚约束出来。
+IO_LOC "mux_sel0" N19;
+IO_PORT "mux_sel0" IO_TYPE=LVCMOS33 DRIVE=8 PULL_MODE=NONE BANK_VCCIO=3.3;
+
+IO_LOC "mux_sel1" P19;
+IO_PORT "mux_sel1" IO_TYPE=LVCMOS33 DRIVE=8 PULL_MODE=NONE BANK_VCCIO=3.3;
+
+IO_LOC "mux_sel2" P26;
+
+// ---------- 调试 LED（4 个空闲用户 LED）----------
+//  P0 M25 = USR_LED.3      P1 L20 = USR_LED.2
+//  P2 N21 = USR_LED.4      P3 R26 = USR_LED.1
+//  [2:0] = 泳道0 音色槽（发 pc N 看图样变化）  [3] = 事件脉冲（测延迟）
+IO_LOC "dbg_led[0]" M25;                          // USR_LED.3
+IO_PORT "dbg_led[0]" IO_TYPE=LVCMOS33 DRIVE=8 BANK_VCCIO=3.3;
+IO_LOC "dbg_led[1]" L20;                          // USR_LED.2
+IO_PORT "dbg_led[1]" IO_TYPE=LVCMOS33 DRIVE=8 BANK_VCCIO=3.3;
+IO_LOC "dbg_led[2]" N21;                          // USR_LED.4
+IO_PORT "dbg_led[2]" IO_TYPE=LVCMOS33 DRIVE=8 BANK_VCCIO=3.3;
+IO_LOC "dbg_led[3]" R26;                          // USR_LED.1
+IO_PORT "dbg_led[3]" IO_TYPE=LVCMOS33 DRIVE=8 BANK_VCCIO=3.3;
+IO_PORT "mux_sel2" IO_TYPE=LVCMOS33 DRIVE=8 PULL_MODE=NONE BANK_VCCIO=3.3;
+
+// ---- 1 位 sigma-delta 音频探针（示波器用）----
+//   PMOD1 的 IO0（J24 第 1 脚）。PMOD1 全 8 脚都是普通 I/O，不与配置脚冲突。
+//   ⚠ PMOD0（J22）多为 SSPI/配置专用脚（N17=SI、L24=CS、R16=SCLK），不要用。
+IO_LOC  "dbg_sd" C24;
+IO_PORT "dbg_sd" IO_TYPE=LVCMOS33;
+
+// ---- 2026-10-21 加：分级探针（同一块 PMOD1 / J24，其余脚仍空闲）----
+//   dbg_sd_va = voice_aud[泳道0]（SVF + 包络 + VCA 之后） → E25（J24 第 2 脚）
+//   dbg_sd_wv = DDS 波表输出[泳道0]（SVF 之前）           → L17（J24 第 3 脚）
+IO_LOC  "dbg_sd_va" E25;
+IO_PORT "dbg_sd_va" IO_TYPE=LVCMOS33;
+IO_LOC  "dbg_sd_wv" L17;
+IO_PORT "dbg_sd_wv" IO_TYPE=LVCMOS33;
+
+//============================================================================
+//  2026-10-23 追加 —— 800x480 LCD（波形可视化，sakiko 的 vis_top）
+//  引脚与面板时序取自 board/myProjForMWhichVis（已上板验证）
+//============================================================================
+IO_LOC "lcd_clk" H21;
+IO_LOC "lcd_en"  A24;
+IO_LOC "lcd_r[5]" H19;
+IO_LOC "lcd_r[4]" J19;
+IO_LOC "lcd_r[3]" G25;
+IO_LOC "lcd_r[2]" H18;
+IO_LOC "lcd_r[1]" J18;
+IO_LOC "lcd_r[0]" K17;
+IO_LOC "lcd_g[5]" J16;
+IO_LOC "lcd_g[4]" K15;
+IO_LOC "lcd_g[3]" F22;
+IO_LOC "lcd_g[2]" G22;
+IO_LOC "lcd_g[1]" G21;
+IO_LOC "lcd_g[0]" G20;
+IO_LOC "lcd_b[5]" F20;
+IO_LOC "lcd_b[4]" G19;
+IO_LOC "lcd_b[3]" F19;
+IO_LOC "lcd_b[2]" F18;
+IO_LOC "lcd_b[1]" M17;
+IO_LOC "lcd_b[0]" M16;
+IO_PORT "lcd_clk"  IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8  BANK_VCCIO=3.3;
+IO_PORT "lcd_en"   IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8  BANK_VCCIO=3.3;
+IO_PORT "lcd_r[5]" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=24 BANK_VCCIO=3.3;
+IO_PORT "lcd_r[4]" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=24 BANK_VCCIO=3.3;
+IO_PORT "lcd_r[3]" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=24 BANK_VCCIO=3.3;
+IO_PORT "lcd_r[2]" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=24 BANK_VCCIO=3.3;
+IO_PORT "lcd_r[1]" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=24 BANK_VCCIO=3.3;
+IO_PORT "lcd_r[0]" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=24 BANK_VCCIO=3.3;
+IO_PORT "lcd_g[5]" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=24 BANK_VCCIO=3.3;
+IO_PORT "lcd_g[4]" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=24 BANK_VCCIO=3.3;
+IO_PORT "lcd_g[3]" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=24 BANK_VCCIO=3.3;
+IO_PORT "lcd_g[2]" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=24 BANK_VCCIO=3.3;
+IO_PORT "lcd_g[1]" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=24 BANK_VCCIO=3.3;
+IO_PORT "lcd_g[0]" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=24 BANK_VCCIO=3.3;
+IO_PORT "lcd_b[5]" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=24 BANK_VCCIO=3.3;
+IO_PORT "lcd_b[4]" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=24 BANK_VCCIO=3.3;
+IO_PORT "lcd_b[3]" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=24 BANK_VCCIO=3.3;
+IO_PORT "lcd_b[2]" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=24 BANK_VCCIO=3.3;
+IO_PORT "lcd_b[1]" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=24 BANK_VCCIO=3.3;
+IO_PORT "lcd_b[0]" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=24 BANK_VCCIO=3.3;
+
+//  2026-10-25 追加 —— 延迟测量探针（第一个有门控且音频非零的采样帧拉高）
+IO_LOC "dbg_audio_on" B21;
+IO_PORT "dbg_audio_on" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=3.3;
