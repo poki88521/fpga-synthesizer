@@ -43,6 +43,7 @@
         <File path="src/top/voice_slot_seq.v" type="file.verilog" enable="1"/>
         <File path="src/vis/lcd_800x480.v" type="file.verilog" enable="1"/>
         <File path="src/vis/pll_pixel.v" type="file.verilog" enable="1"/>
+        <File path="src/vis/spec_band.v" type="file.verilog" enable="1"/>
         <File path="src/vis/vis_audio.v" type="file.verilog" enable="1"/>
         <File path="src/vis/vis_top.v" type="file.verilog" enable="1"/>
         <File path="src/vis/wave_render.v" type="file.verilog" enable="1"/>

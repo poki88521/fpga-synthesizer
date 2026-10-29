@@ -121,7 +121,10 @@ module full_system #(
 
     // ---- 2026-10-25 加：延迟测量探针（示波器用）----
     //    第一个『有门控且音频非零』的采样帧拉高，松开音后拉低（上升沿 = 出声时刻）
-    output wire         dbg_audio_on
+    output wire         dbg_audio_on,
+    // 2026-10-29 加：诊断脚（B21 一直是低，用这三个把问题切开）
+    output wire         dbg_hb,        // A20：心跳 11.7 Hz（验证引脚/电源/探头本身通不通）
+    output wire         dbg_gate       // A19：有音符门控（不管有没有声音）
 );
 
 assign dbg_led[3] = ~(dbg_evt_cnt != 22'd0);      // 同上，低电平点亮
@@ -585,21 +588,42 @@ assign dbg_led[3] = ~(dbg_evt_cnt != 22'd0);      // 同上，低电平点亮
     //    判据：当前有音符门控（|voice_data_gate）且 |mon_l_w| 超阈值 -> 拉高
     //    用途：示波器 CH1 接 MIDI 输入、CH2 接 B21，量『MIDI 字节 -> 出声』延迟
     //  ========================================================================
+    //  ========================================================================
+    //  2026-10-29 重写诊断探针（原版把"按键 + 有声"耦合在一起，排查困难）
+    //    dbg_hb   (A20)：clk_sys 分频 ~11.7 Hz 方波 —— 引脚/电源/探头是否真的通
+    //    dbg_gate (A19)：|voice_data_gate —— 有没有音符门控（与声音无关）
+    //    dbg_audio_on (B21)：门控 + |mon_l_w| >= 128 —— 真正出声
+    //  ========================================================================
     wire signed [15:0] mon_abs = (mon_l_w[15]) ? -$signed(mon_l_w) : $signed(mon_l_w);
-    reg                dbg_audio_on_r;
-    reg  [15:0]        lat_frames;
 
+    wire       gate_any = |voice_data_gate;
+
+    reg  [21:0] hb_cnt;
+    reg         hb_r;
     always @(posedge clk_sys or negedge rst_n_sync) begin
         if (!rst_n_sync) begin
-            dbg_audio_on_r <= 1'b0;
-            lat_frames     <= 16'd0;
-        end else if (sample_stb) begin
-            dbg_audio_on_r <= (|voice_data_gate) && (mon_abs >= 16'sd128);
-            if (!(|voice_data_gate))
-                lat_frames <= 16'd0;
-            else if (lat_frames != 16'hFFFF)
-                lat_frames <= lat_frames + 16'd1;
+            hb_cnt <= 22'd0;
+            hb_r   <= 1'b0;
+        end else if (hb_cnt == 22'd2_097_151) begin
+            hb_cnt <= 22'd0;
+            hb_r   <= ~hb_r;
+        end else begin
+            hb_cnt <= hb_cnt + 22'd1;
         end
+    end
+    assign dbg_hb = hb_r;
+
+    reg gate_r;
+    always @(posedge clk_sys or negedge rst_n_sync) begin
+        if (!rst_n_sync) gate_r <= 1'b0;
+        else             gate_r <= gate_any;
+    end
+    assign dbg_gate = gate_r;
+
+    reg dbg_audio_on_r;
+    always @(posedge clk_sys or negedge rst_n_sync) begin
+        if (!rst_n_sync)            dbg_audio_on_r <= 1'b0;
+        else if (sample_stb)        dbg_audio_on_r <= gate_any && (mon_abs >= 16'sd128);
     end
     assign dbg_audio_on = dbg_audio_on_r;
 
