@@ -111,6 +111,31 @@ module soft_limiter #(
     endfunction
 
     //========================================================================
+    //  2026-10-30：**本地复位再同步 + 同步复位**（修时序，不改音频行为）
+    //
+    //  P&R 报 66 个 Setup 违例，最差 −1.57 ns，全部是：
+    //      u_full_top/rst_sync_2_s0/Q → u_full_top/u_master/g_lim.u_lim/env_d1_*_s0/D
+    //  根因：rst_n 是全局高扇出网络，而 PRIMARY/LW 已 8/8 用满（时钟资源墙），
+    //        它只能走通用布线，从复位同步器到本模块 200+ 个 FF 的连线长达 21.9 ns。
+    //
+    //  修法：
+    //    ① 本模块内部再做 2 级复位同步 → rst_n_l 只在模块内扇出（~200 个 FF）
+    //    ② 模块内全部改成**同步复位**（敏感表只留 posedge clk）
+    //       ⇒ 复位不再是"全局异步网络"，而是"本地寄存器 → 邻近 FF"的普通路径
+    //  行为差异：复位释放晚 2 个时钟（< 41 ns @49.152 MHz），对限幅器完全无影响。
+    //========================================================================
+    reg rst_n_meta, rst_n_l;
+    always @(posedge clk) begin
+        if (!rst_n) begin          // 这一处保留异步（唯一的异步复位点）
+            rst_n_meta <= 1'b0;
+            rst_n_l    <= 1'b0;
+        end else begin
+            rst_n_meta <= 1'b1;
+            rst_n_l    <= rst_n_meta;
+        end
+    end
+
+    //========================================================================
     // 流水级 0：输入 → 包络
     //========================================================================
     wire [23:0] al  = abs24(l_in);
@@ -120,8 +145,8 @@ module soft_limiter #(
     reg  signed [AW-1:0] l_d1, r_d1;
     reg  [23:0]          env_d1;
 
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
+    always @(posedge clk) begin
+        if (!rst_n_l) begin
             l_d1   <= {AW{1'b0}};
             r_d1   <= {AW{1'b0}};
             env_d1 <= 24'd0;
@@ -152,8 +177,8 @@ module soft_limiter #(
     reg  [6:0]           mant_d2;
     reg  [4:0]           nk_d2;
 
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
+    always @(posedge clk) begin
+        if (!rst_n_l) begin
             l_d2    <= {AW{1'b0}};
             r_d2    <= {AW{1'b0}};
             env_d2  <= 24'd0;
@@ -214,8 +239,8 @@ module soft_limiter #(
     reg  signed [AW-1:0] l_d4, r_d4;      // 音频同步多延迟一拍
     reg  [23:0]          env_d4;
 
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
+    always @(posedge clk) begin
+        if (!rst_n_l) begin
             l_d3     <= {AW{1'b0}};
             r_d3     <= {AW{1'b0}};
             env_d3   <= 24'd0;
@@ -231,8 +256,8 @@ module soft_limiter #(
         end
     end
 
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
+    always @(posedge clk) begin
+        if (!rst_n_l) begin
             l_d4 <= {AW{1'b0}}; r_d4 <= {AW{1'b0}};
             env_d4 <= 24'd0; recip_d4 <= 16'd0;
         end else if (en) begin
@@ -269,8 +294,8 @@ module soft_limiter #(
                        :                   g;
     wire [15:0] g_cur  = (g_tgt_3 < g) ? g_tgt_3 : g;                 // 本拍实际生效的增益
 
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
+    always @(posedge clk) begin
+        if (!rst_n_l) begin
             g <= 16'd32768;                          // 复位初值 1.0（文档要求）
         end else if (en) begin
             g <= g_nxt;
@@ -280,8 +305,8 @@ module soft_limiter #(
     wire signed [47:0] lp = $signed(l_d4) * $signed({1'b0, g_cur});
     wire signed [47:0] rp = $signed(r_d4) * $signed({1'b0, g_cur});
 
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
+    always @(posedge clk) begin
+        if (!rst_n_l) begin
             l_out <= {AW{1'b0}};
             r_out <= {AW{1'b0}};
             g_out <= 16'd32768;

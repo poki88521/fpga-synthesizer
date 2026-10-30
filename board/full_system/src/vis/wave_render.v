@@ -1,5 +1,5 @@
 //============================================================================
-//  wave_render —— 全屏波形渲染（1.5 mm 实心粗线 + 纯黑底 + 白轴线/白框）
+//  wave_render —— 全屏波形渲染 + 底部 32 频带频谱柱
 //
 //  ── 视觉规格（2026-10-19 与 saki 确认）───────────────────────────────────
 //      · 波形线宽 **1.5 mm**。5 寸 800×480 屏实测 7.346 px/mm
@@ -11,8 +11,13 @@
 //      · 竖向网格：不要
 //      · **天地**：满幅时线的外沿在 y=40 / y=440，距屏边 40 px
 //
-//  ── 绘制优先级 ──────────────────────────────────────────────────────────
-//      白框 > 波形 > 白轴线 > 黑底
+//  ── 频谱（2026-10-29 第 4 版）────────────────────────────────────────────
+//      · 占底部 100 px（y = 380..479），32 根柱，每根 **25 px**（24 px 柱 + 1 px 隙）
+//      · 柱高来自 spec_band 的 bars[255:0]，每个频带 8 bit，0..100 px，从 y=479 往上长
+//      · 颜色按高度：>70 红 / >40 黄 / 其余青绿
+//
+//  ── 绘制优先级 ───────────────────────────────────────────────────────────
+//      白框 > 频谱柱 > 波形 > 白轴线 > 黑底
 //
 //  ── 折线渲染（关键，踩过三次坑）────────────────────────────────────────
 //      **不能**只按"当前列的 y"画一个竖条 —— 那样陡峭处会断成虚线，
@@ -34,7 +39,11 @@ module wave_render #(
     parameter integer LINE_HALF = 5,     // 11 px 总宽（±5）
     parameter integer AXIS_HALF = 1,     // 白轴线 ±1 = 3 px
     parameter integer BORDER    = 2,     // 白框 2 px
-    parameter integer Y_BITS    = 11
+    parameter integer Y_BITS    = 11,
+    parameter integer SPEC_Y0   = 380,   // 频谱区上沿（100 px 高）
+    parameter integer AXIS_Y    = 240,   // 波形零轴（必须与 vis_audio 的 CX 一致）
+    parameter integer BAND_W    = 25,    // 800 / 32
+    parameter integer BAR_GAP   = 1      // 柱右侧留 1 px 缝
 )(
     input  wire              clk,
     input  wire              rst_n,
@@ -50,19 +59,28 @@ module wave_render #(
     // ---- 当前音色色（RGB666）----
     input  wire [17:0]       color,
 
+    // ---- 32 个频带高度（每 8 位一个，0..100），像素域已同步 ----
+    input  wire [255:0]      bars,
+
     // ---- 回给 lcd_800x480（t2）----
     output wire [17:0]       rgb
 );
 
     localparam [17:0] BLACK = 18'b000000_000000_000000;
     localparam [17:0] WHITE = 18'b111111_111111_111111;
+    localparam [17:0] C_RED = 18'b111111_010000_000000;
+    localparam [17:0] C_YEL = 18'b111111_111111_000000;
+    localparam [17:0] C_GRN = 18'b000011_111111_111000;
 
-    localparam integer CX = V_VALID / 2;      // 零轴 y = 240
+    localparam integer AX = AXIS_Y;           // 零轴 y（由 vis_top 覆盖）
 
     //  ⚠ 不要对 `parameter integer` 做位选（`LINE_HALF[11:0]`）——
     //     iverilog 会把它当 X，导致整行输出 X（表现为整屏黑）。
     //     统一用定宽 localparam。
     localparam [11:0] LH12 = LINE_HALF;
+    localparam [11:0] SY0  = SPEC_Y0;
+    localparam [11:0] BWID = BAND_W;
+    localparam [11:0] BGAP = BAR_GAP;
 
     //========================================================================
     //  1. 坐标打一拍 → t2（与波形源的 1 拍延迟对齐）
@@ -110,17 +128,40 @@ module wave_render #(
                    (y12 <= {1'b0, hi} + LH12);
 
     //  白轴线
-    wire on_axis = (y_d >= CX - AXIS_HALF) && (y_d <= CX + AXIS_HALF);
+    wire on_axis = (y_d >= AX - AXIS_HALF) && (y_d <= AX + AXIS_HALF);
 
     //  白框
     wire on_border = (x_d < BORDER) || (x_d >= H_VALID - BORDER) ||
                      (y_d < BORDER) || (y_d >= V_VALID - BORDER);
 
     //========================================================================
-    //  4. 颜色优先级：白框 > 波形 > 白轴线 > 黑底
+    //  4. 频谱柱
+    //     band_i = x_d / 25 。用 (x*41)>>10 代替除法（0..799 内精确）：
+    //       x=24→0, x=25→1, x=49→1, x=50→2, x=799→31
+    //     ⚠ 乘法必须先落在一个足够宽的 wire 上，否则会按赋值上下文（5 bit）
+    //       把乘积截断 —— 这个坑在 spec_band 里已经踩过一次。
+    //========================================================================
+    wire [14:0] xdm    = x_d * 15'd41;
+    wire [4:0]  band_r = xdm[14:10];
+    wire [4:0]  band_i = (x_d < H_VALID) ? band_r : 5'd0;
+    wire [9:0]  band_x = {5'd0, band_i} * 10'd25;
+    wire [9:0]  xin    = x_d - band_x;              // 0..24
+
+    wire [7:0]  bar_h   = bars[band_i*8 +: 8];
+    wire [11:0] bar_top = 12'd480 - {4'd0, bar_h};  // 380..480
+    wire        in_bar  = (y12 >= SY0) && (y12 >= bar_top) &&
+                          (y12 < V_VALID - BORDER) &&
+                          (xin < BWID - BGAP);
+
+    wire [17:0] bar_col = (bar_h > 8'd70) ? C_RED :
+                          (bar_h > 8'd40) ? C_YEL : C_GRN;
+
+    //========================================================================
+    //  5. 颜色优先级：白框 > 频谱柱 > 波形 > 白轴线 > 黑底
     //========================================================================
     assign rgb = (!vld_d)  ? BLACK  :
                  on_border ? WHITE  :
+                 in_bar    ? bar_col:
                  in_wave   ? color  :
                  on_axis   ? WHITE  :
                              BLACK;
