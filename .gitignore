@@ -1,8 +1,77 @@
+#============================================================================
+#  .gitignore
+#
+#  组织原则：**以屏蔽文件夹为主**。
+#    理由：产物都产生在固定的目录里（EDA 的 impl/、构建的 out/ 等），
+#          用目录规则既通用又不会误伤源码目录里的同名文件。
+#          扩展名规则（*.fs / *.pr …）会全仓库生效，容易误伤，只保留少数必要的。
+#
+#  ⚠ 例外用 `!` 单独放行，且在文件末尾（gitignore 后者覆盖前者）。
+#============================================================================
 
-.obsidian/
+# ---------------------------- 文件夹级（主体）----------------------------
+
+# 厂商资料与本地素材（约 1.1 GB，不入库）
 material/
-# drawio temp file
-*.bkp
 
-# 输出文件夹
+# 编辑器与工具残留
+.obsidian/
+.acl-recovery/
+
+# EDA 构建产物（Gowin 固定布局；impl/ 里单文件可达 129 MB）
+impl/
+pnr/
+gwsynthesis/
+
+# 生成物输出目录（仿真、波表转换）
 out/
+
+# Python
+__pycache__/
+.ipynb_checkpoints/
+
+# Gowin 工程的导入数据目录（由 sync_src.ps1 从仓库生成，属构建产物）
+#  ⚠ 2026-10-23：wave_table.hex 例外——
+#     它是**综合必需输入**（full_system.v 的 WAVE_INIT_FILE），
+#     而它的源头 wave_table/out/wave_table.hex 被 /wave_table/* 忽略，
+#     等于这份文件在仓库里没有任何副本 → 故单独纳入版本管理。
+#     注意：git 不允许"父目录被整体忽略时再用 ! 例外"，所以这里必须写成
+#     data/* + 负向规则的形式，不能写成 data/ + !.../wave_table.hex。
+board/full_system/data/*
+!board/full_system/data/wave_table.hex
+
+# ---------------------------- 文件级（少量必要）----------------------------
+
+# Gowin 用户配置（窗口布局等，因人而异）
+*.gprj.user
+*.gao
+*.ipc
+
+# 备份与临时文件
+*.bak
+*.orig
+*.rej
+*~
+*.tmp
+*.swp
+
+# ---------------------------- 例外（放行必须入库的）----------------------------
+
+# ⚠ 波表目录：**只保留一个空目录**（用 .gitkeep 占位）。
+#    里面的一切（脚本、wav 素材、out/ 下的 hex/coe/mif）目前全部忽略，
+#    待波表流程重新设计后再决定哪些入库。
+#
+#    ⚠ 注意：`wave_table/out/wave_table.hex` 目前是**构建必需输入**
+#      （full_system.v 的 WAVE_INIT_FILE = "data/wave_table.hex"，
+#        由 sync_src.ps1 从 wave_table/out/wave_table.hex 复制）。
+#      忽略它意味着 **clone 下来必须自己生成波表才能综合**。
+#      等新流程定下来后要把这个依赖一并解决。
+/wave_table/*
+!/wave_table/.gitkeep
+# ---------------------------- 2026-10-23 追加 ----------------------------
+# 仿真波形（每次跑 TB 都会生成，体积大）
+*.vcd
+# agent 探针 dump（tb_*_probe 的输出，可重新生成）
+scratch/agent/probe_*.txt
+# 事故/损坏文件（*.bak 匹配不到这类后缀）
+*.bak_*
