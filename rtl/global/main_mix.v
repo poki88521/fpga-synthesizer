@@ -56,6 +56,30 @@ module main_mix #(
             else                        sat24 = v[AW-1:0];
         end
     endfunction
+    //  ========================================================================
+    //  2026-11-02 新增：**24 位软饱和**（替代主混音的硬削顶）
+    //
+    //  现象：多个声部 + 效果器返回相加后 > 1.0 FS，原来在这里被 sat24 **硬削**，
+    //        产生与电平成正比的互调失真（把音量降下来就消失）。
+    //        这一级在 soft_limiter **之前**，所以限幅器救不到。
+    //  做法：|v| ≤ 0.75 FS（= 限幅器 THRESH）保持线性；超过后斜率降为 1/4，
+    //        最终上限仍是 ±1.0 FS。⇒ 峰值被"压弯"而不是"削平"，
+    //        互调失真大幅下降，且**不损失整体音量**（线性区不变）。
+    //  ========================================================================
+    function automatic signed [AW-1:0] soft24;
+        input signed [47:0] v;
+        reg signed [47:0] a, y;
+        begin
+            a = (v < 0) ? -v : v;
+            if (a <= 48'sd6291456)      y = v;                              // ≤ 0.75 FS：线性
+            else                        y = 48'sd6291456 + ((a - 48'sd6291456) >>> 2);
+            if (v < 0) y = -y;
+            if      (y >  48'sd8388607) soft24 = 24'sh7FFFFF;
+            else if (y < -48'sd8388608) soft24 = 24'sh800000;
+            else                        soft24 = y[AW-1:0];
+        end
+    endfunction
+
 
     reg signed [AWX-1:0] acc_l, acc_r;
     reg signed [AWX-1:0] dry_l, dry_r;
@@ -116,8 +140,8 @@ module main_mix #(
                 //   超时后按"没有效果返回"输出干声，保证链路永不僵死。
                 ST_WAIT: begin
                     if (fx_vld) begin
-                        main_l  <= sat24(dry_l_x + fxl_x);
-                        main_r  <= sat24(dry_r +  fxr_x);
+                        main_l  <= soft24(dry_l_x + fxl_x);   // 2026-11-02：软饱和，避免电平相关的互调
+                        main_r  <= soft24(dry_r +  fxr_x);   // 2026-11-02：软饱和
                         mix_vld <= 1'b1;
                         st      <= ST_ACC;
                         acc_l   <= 48'sd0;

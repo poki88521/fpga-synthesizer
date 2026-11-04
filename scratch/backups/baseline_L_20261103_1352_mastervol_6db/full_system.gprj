@@ -1,0 +1,59 @@
+<?xml version="1" encoding="UTF-8"?>
+<!DOCTYPE gowin-fpga-project>
+<Project>
+    <Template>FPGA</Template>
+    <Version>5</Version>
+    <Device name="GW5AST-138B" pn="GW5AST-LV138FPG676AC1/I0">gw5ast138b-007</Device>
+    <FileList>
+        <File path="src/channel/chan_buf.v" type="file.verilog" enable="1"/>
+        <File path="src/channel/chan_coef.v" type="file.verilog" enable="1"/>
+        <File path="src/channel/chan_layer.v" type="file.verilog" enable="1"/>
+        <File path="src/channel/send_bus.v" type="file.verilog" enable="1"/>
+        <File path="src/common/i2c_mst.v" type="file.verilog" enable="1"/>
+        <File path="src/common/ms5351_init.v" type="file.verilog" enable="1"/>
+        <File path="src/common/norm_sat.v" type="file.verilog" enable="1"/>
+        <File path="src/common/pll_49m.v" type="file.verilog" enable="1"/>
+        <File path="src/common/pt8211_tx.v" type="file.verilog" enable="1"/>
+        <File path="src/common/reset_sync.v" type="file.verilog" enable="1"/>
+        <File path="src/common/sat24.v" type="file.verilog" enable="1"/>
+        <File path="src/global/dc_block.v" type="file.verilog" enable="1"/>
+        <File path="src/global/dither16.v" type="file.verilog" enable="1"/>
+        <File path="src/global/fx_chorus.v" type="file.verilog" enable="1"/>
+        <File path="src/global/fx_delay.v" type="file.verilog" enable="1"/>
+        <File path="src/global/fx_reverb.v" type="file.verilog" enable="1"/>
+        <File path="src/global/fx_top.v" type="file.verilog" enable="1"/>
+        <File path="src/global/main_mix.v" type="file.verilog" enable="1"/>
+        <File path="src/global/master_chain.v" type="file.verilog" enable="1"/>
+        <File path="src/global/master_volume.v" type="file.verilog" enable="1"/>
+        <File path="src/global/soft_limiter.v" type="file.verilog" enable="1"/>
+        <File path="src/scheduler/ch_lfo.v" type="file.verilog" enable="1"/>
+        <File path="src/scheduler/chan_param_shadow.v" type="file.verilog" enable="1"/>
+        <File path="src/scheduler/chan_table.v" type="file.verilog" enable="1"/>
+        <File path="src/scheduler/midi_arb.v" type="file.verilog" enable="1"/>
+        <File path="src/scheduler/midi_filter.v" type="file.verilog" enable="1"/>
+        <File path="src/scheduler/midi_parse.v" type="file.verilog" enable="1"/>
+        <File path="src/scheduler/sched_subsystem.v" type="file.verilog" enable="1"/>
+        <File path="src/scheduler/timbre_map.v" type="file.verilog" enable="1"/>
+        <File path="src/scheduler/voice_alloc.v" type="file.verilog" enable="1"/>
+        <File path="src/scheduler/voice_fetch.v" type="file.verilog" enable="1"/>
+        <File path="src/top/full_system.v" type="file.verilog" enable="1"/>
+        <File path="src/top/full_top.v" type="file.verilog" enable="1"/>
+        <File path="src/top/sd_out.v" type="file.verilog" enable="1"/>
+        <File path="src/top/test_voice_gen.v" type="file.verilog" enable="1"/>
+        <File path="src/top/voice_slot_seq.v" type="file.verilog" enable="1"/>
+        <File path="src/vis/lcd_800x480.v" type="file.verilog" enable="1"/>
+        <File path="src/vis/pll_pixel.v" type="file.verilog" enable="1"/>
+        <File path="src/vis/spec_band.v" type="file.verilog" enable="1"/>
+        <File path="src/vis/vis_audio.v" type="file.verilog" enable="1"/>
+        <File path="src/vis/vis_top.v" type="file.verilog" enable="1"/>
+        <File path="src/vis/wave_render.v" type="file.verilog" enable="1"/>
+        <File path="src/voice/adsr_vca.v" type="file.verilog" enable="1"/>
+        <File path="src/voice/dds_voice.v" type="file.verilog" enable="1"/>
+        <File path="src/voice/svf_voice.v" type="file.verilog" enable="1"/>
+        <File path="src/voice/voice_mono.v" type="file.verilog" enable="1"/>
+        <File path="src/voice/wave_fetch.v" type="file.verilog" enable="1"/>
+        <File path="src/voice/wave_table_rom.v" type="file.verilog" enable="1"/>
+        <File path="full_system.cst" type="file.cst" enable="1"/>
+        <File path="full_system.sdc" type="file.sdc" enable="1"/>
+    </FileList>
+</Project>

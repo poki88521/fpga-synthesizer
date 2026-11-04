@@ -1,6 +1,6 @@
 <mxfile host="Electron">
   <diagram name="FPGA 内部架构" id="fpga-arch-1">
-    <mxGraphModel dx="1471" dy="906" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1900" pageHeight="1950" math="0" shadow="0">
+    <mxGraphModel dx="2575" dy="1585" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1900" pageHeight="1950" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -14,103 +14,106 @@
           <mxGeometry height="70" width="200" x="620" y="80" as="geometry" />
         </mxCell>
         <mxCell id="note_drop" parent="1" style="text;html=1;fontSize=9;align=left;verticalAlign=middle;fontColor=#B85450;" value="注：乐器端口的混音类 CC（7/10/91/93/94）直接丢弃" vertex="1">
-          <mxGeometry height="30" width="300" x="870" y="100" as="geometry" />
+          <mxGeometry height="30" width="300" x="800" y="100" as="geometry" />
         </mxCell>
         <mxCell id="midi_parse" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=11;" value="MIDI 消息解析&#xa;&lt;font style=&quot;font-size:9px&quot;&gt;事件类&lt;/font&gt;" vertex="1">
-          <mxGeometry height="70" width="230" x="340" y="210" as="geometry" />
+          <mxGeometry height="70" width="230" x="270" y="210" as="geometry" />
         </mxCell>
         <mxCell id="chan_editor" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=11;" value="通道状态表编辑器&#xa;&lt;font style=&quot;font-size:9px&quot;&gt;事件类&lt;br&gt;写通道状态表&lt;/font&gt;" vertex="1">
-          <mxGeometry height="70" width="230" x="340" y="330" as="geometry" />
+          <mxGeometry height="70" width="230" x="270" y="330" as="geometry" />
         </mxCell>
         <mxCell id="voice_alloc" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=11;" value="声部分配 / 释放器&#xa;&lt;font style=&quot;font-size:9px&quot;&gt;事件类&lt;br&gt;写声部表（分配类字段）&lt;br&gt;鼓：忽略 Note Off / 互斥静音&lt;/font&gt;" vertex="1">
-          <mxGeometry height="70" width="230" x="620" y="330" as="geometry" />
+          <mxGeometry height="70" width="230" x="550" y="330" as="geometry" />
         </mxCell>
         <mxCell id="timbre_map" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=11;" value="音色映射&#xa;&lt;font style=&quot;font-size:9px&quot;&gt;事件类&lt;br&gt;读音色映射表&lt;/font&gt;" vertex="1">
-          <mxGeometry height="70" width="170" x="920" y="200" as="geometry" />
+          <mxGeometry height="70" width="170" x="850" y="200" as="geometry" />
         </mxCell>
-        <mxCell id="drum_map" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=11;" value="鼓组映射&#xa;&lt;font style=&quot;font-size:9px&quot;&gt;事件类（bank MSB = 120）&lt;br&gt;读音色参数表 + 鼓组映射表&lt;br&gt;note → timbre_slot&lt;/font&gt;" vertex="1">
-          <mxGeometry height="70" width="190" x="1120" y="330" as="geometry" />
+        <mxCell id="drum_map" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=11;" value="鼓组映射&lt;span style=&quot;color:#999&quot;&gt;（保留）&lt;/span&gt;&#xa;&lt;font style=&quot;font-size:9px&quot;&gt;事件类（bank MSB = 120）&lt;br&gt;读音色参数表 + 鼓组映射&lt;span style=&quot;color:#999&quot;&gt;（保留）&lt;/span&gt;表&lt;br&gt;note → timbre_slot&lt;/font&gt;" vertex="1">
+          <mxGeometry height="70" width="190" x="1050" y="330" as="geometry" />
         </mxCell>
         <mxCell id="tables_box" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#999999;strokeWidth=5;dashed=1;verticalAlign=top;align=center;fontSize=15;fontStyle=1;fontColor=#666666;" value="状态表（由 §四 定义）" vertex="1">
-          <mxGeometry height="310" width="1120" x="200" y="460" as="geometry" />
+          <mxGeometry height="310" width="1120" x="130" y="460" as="geometry" />
         </mxCell>
         <mxCell id="chan_table" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=11;" value="&lt;b&gt;通道状态表&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;16 项&lt;br&gt;作用域：通道级&lt;/font&gt;" vertex="1">
-          <mxGeometry height="220" width="250" x="230" y="510" as="geometry" />
+          <mxGeometry height="220" width="250" x="160" y="510" as="geometry" />
         </mxCell>
-        <mxCell id="voice_table" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=11;" value="&lt;b&gt;声部状态表&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;N 项（N = 声部数）&lt;br&gt;作用域：声部级&lt;br&gt;5 组：DSP 运行状态 / 演奏控制&lt;br&gt;音色引用 / 派生缓存 / 管理调度&lt;/font&gt;" vertex="1">
-          <mxGeometry height="220" width="250" x="510" y="510" as="geometry" />
+        <mxCell id="voice_table" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=11;" value="&lt;b&gt;声部状态表&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;32 项（8 泳道 × 4 组）&lt;br&gt;作用域：声部级&lt;br&gt;5 组：DSP 运行状态 / 演奏控制&lt;br&gt;音色引用 / 派生缓存 / 管理调度&lt;/font&gt;" vertex="1">
+          <mxGeometry height="220" width="250" x="440" y="510" as="geometry" />
         </mxCell>
         <mxCell id="timbre_table" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=11;" value="&lt;b&gt;音色参数表&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;按 timbre_slot 索引&lt;br&gt;作用域：资源池（只读）&lt;br&gt;wave_* 索引到只读波表&lt;/font&gt;" vertex="1">
-          <mxGeometry height="220" width="240" x="790" y="510" as="geometry" />
+          <mxGeometry height="220" width="240" x="720" y="510" as="geometry" />
         </mxCell>
-        <mxCell id="global_table" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=11;" value="&lt;b&gt;全局配置表&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;作用域：全局级&lt;br&gt;· 效果参数表&lt;br&gt;· 主输出参数表&lt;br&gt;· 音色映射表（只读）&lt;br&gt;· 鼓组映射表（只读）&lt;/font&gt;" vertex="1">
-          <mxGeometry height="220" width="250" x="1060" y="510" as="geometry" />
+        <mxCell id="global_table" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=11;" value="&lt;b&gt;全局配置表&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;作用域：全局级&lt;br&gt;· 效果参数表&lt;br&gt;· 主输出参数表&lt;br&gt;· 音色映射表（只读）&lt;br&gt;· 鼓组映射&lt;span style=&quot;color:#999&quot;&gt;（保留）&lt;/span&gt;表（只读）&lt;/font&gt;" vertex="1">
+          <mxGeometry height="220" width="250" x="990" y="510" as="geometry" />
         </mxCell>
         <mxCell id="voice_seq" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=11;" value="声部时序器&#xa;&lt;font style=&quot;font-size:9px&quot;&gt;周期类&lt;br&gt;只产生 (组, 泳道) 索引序列&lt;/font&gt;" vertex="1">
-          <mxGeometry height="80" width="250" x="340" y="880" as="geometry" />
+          <mxGeometry height="80" width="250" x="270" y="880" as="geometry" />
         </mxCell>
         <mxCell id="voice_fetch" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=11;" value="声部取数器&#xa;&lt;font style=&quot;font-size:9px&quot;&gt;周期类&lt;br&gt;并行取出声部上下文&lt;br&gt;预取下一时隙以隐藏读延迟&lt;/font&gt;" vertex="1">
-          <mxGeometry height="80" width="250" x="660" y="880" as="geometry" />
+          <mxGeometry height="80" width="250" x="590" y="880" as="geometry" />
         </mxCell>
         <mxCell id="sv_box" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#999999;strokeWidth=5;dashed=1;verticalAlign=top;align=center;fontSize=15;fontStyle=1;fontColor=#666666;" value="单声部处理层（每声部实例，P 条泳道 × G 个串行组）" vertex="1">
-          <mxGeometry height="280" width="1120" x="200" y="1020" as="geometry" />
+          <mxGeometry height="280" width="1120" x="130" y="1020" as="geometry" />
         </mxCell>
         <mxCell id="dds" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" value="DDS + 波表&#xa;&lt;font style=&quot;font-size:9px&quot;&gt;读：音色参数表&lt;/font&gt;" vertex="1">
-          <mxGeometry height="70" width="170" x="240" y="1070" as="geometry" />
+          <mxGeometry height="70" width="170" x="170" y="1070" as="geometry" />
         </mxCell>
         <mxCell id="svf" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" value="SVF 滤波&#xa;&lt;font style=&quot;font-size:9px&quot;&gt;读：音色参数表&lt;/font&gt;" vertex="1">
-          <mxGeometry height="70" width="170" x="470" y="1070" as="geometry" />
+          <mxGeometry height="70" width="170" x="400" y="1070" as="geometry" />
         </mxCell>
         <mxCell id="vca" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" value="VCA&#xa;&lt;font style=&quot;font-size:9px&quot;&gt;= 包络 × 力度&lt;/font&gt;" vertex="1">
-          <mxGeometry height="70" width="150" x="700" y="1070" as="geometry" />
+          <mxGeometry height="70" width="150" x="630" y="1070" as="geometry" />
         </mxCell>
         <mxCell id="adsr" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=11;" value="ADSR 包络&#xa;&lt;font style=&quot;font-size:9px&quot;&gt;调制源&lt;br&gt;读：音色参数表&lt;/font&gt;" vertex="1">
-          <mxGeometry height="70" width="180" x="350" y="1180" as="geometry" />
+          <mxGeometry height="70" width="180" x="280" y="1180" as="geometry" />
         </mxCell>
-        <mxCell id="lfo" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=11;" value="LFO&#xa;&lt;font style=&quot;font-size:9px&quot;&gt;调制源&lt;br&gt;读：音色参数表&lt;/font&gt;" vertex="1">
-          <mxGeometry height="70" width="180" x="820" y="1190" as="geometry" />
+        <mxCell id="lfo" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=11;" value="LFO（每通道）LFO&#xa;&lt;font style=&quot;font-size:9px&quot;&gt;调制源&lt;br&gt;读：音色参数表&lt;/font&gt;" vertex="1">
+          <mxGeometry height="70" width="180" x="750" y="1190" as="geometry" />
         </mxCell>
         <mxCell id="ch_box" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#999999;strokeWidth=5;dashed=1;verticalAlign=top;align=center;fontSize=15;fontStyle=1;fontColor=#666666;" value="通道处理层（16 通道）" vertex="1">
-          <mxGeometry height="170" width="1120" x="200" y="1340" as="geometry" />
+          <mxGeometry height="170" width="1120" x="130" y="1340" as="geometry" />
         </mxCell>
         <mxCell id="chan_bus" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" value="通道总线累加&#xa;&lt;font style=&quot;font-size:9px&quot;&gt;16 条总线&lt;/font&gt;" vertex="1">
-          <mxGeometry height="70" width="190" x="230" y="1390" as="geometry" />
+          <mxGeometry height="70" width="190" x="160" y="1390" as="geometry" />
         </mxCell>
         <mxCell id="chan_gain" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" value="通道增益&#xa;&lt;font style=&quot;font-size:9px&quot;&gt;读：通道状态表&lt;/font&gt;" vertex="1">
-          <mxGeometry height="70" width="160" x="460" y="1390" as="geometry" />
+          <mxGeometry height="70" width="160" x="390" y="1390" as="geometry" />
         </mxCell>
         <mxCell id="chan_pan" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" value="通道声像&#xa;&lt;font style=&quot;font-size:9px&quot;&gt;读：通道状态表&lt;/font&gt;" vertex="1">
-          <mxGeometry height="70" width="160" x="660" y="1390" as="geometry" />
+          <mxGeometry height="70" width="160" x="590" y="1390" as="geometry" />
         </mxCell>
         <mxCell id="chan_send" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" value="效果发送&#xa;&lt;font style=&quot;font-size:9px&quot;&gt;读：通道状态表&lt;br&gt;3 条发送总线&lt;/font&gt;" vertex="1">
-          <mxGeometry height="70" width="200" x="860" y="1390" as="geometry" />
+          <mxGeometry height="70" width="200" x="790" y="1390" as="geometry" />
         </mxCell>
         <mxCell id="gl_box" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#999999;strokeWidth=5;dashed=1;verticalAlign=top;align=center;fontSize=15;fontStyle=1;fontColor=#666666;" value="全局处理层（单实例）" vertex="1">
-          <mxGeometry height="210" width="1120" x="200" y="1550" as="geometry" />
+          <mxGeometry height="210" width="1120" x="130" y="1550" as="geometry" />
         </mxCell>
         <mxCell id="fx" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" value="效果器&#xa;&lt;font style=&quot;font-size:9px&quot;&gt;混响 / 合唱 / 延迟&lt;br&gt;读：效果参数表&lt;/font&gt;" vertex="1">
-          <mxGeometry height="80" width="200" x="230" y="1605" as="geometry" />
+          <mxGeometry height="80" width="200" x="160" y="1605" as="geometry" />
         </mxCell>
         <mxCell id="master_sum" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" value="主混音求和&#xa;&lt;font style=&quot;font-size:9px&quot;&gt;16 通道 + 效果返回&lt;/font&gt;" vertex="1">
-          <mxGeometry height="80" width="180" x="480" y="1605" as="geometry" />
+          <mxGeometry height="80" width="180" x="410" y="1605" as="geometry" />
         </mxCell>
         <mxCell id="master_out" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" value="主输出处理&#xa;&lt;font style=&quot;font-size:9px&quot;&gt;音量 / 限幅 / 抖动&lt;br&gt;读：主输出参数表&lt;/font&gt;" vertex="1">
-          <mxGeometry height="80" width="200" x="710" y="1605" as="geometry" />
+          <mxGeometry height="80" width="200" x="640" y="1605" as="geometry" />
         </mxCell>
-        <mxCell id="i2s_tx" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" value="I2S 发送&#xa;&lt;font style=&quot;font-size:9px&quot;&gt;48 kHz / 24 bit&lt;br&gt;主模式&lt;/font&gt;" vertex="1">
-          <mxGeometry height="80" width="180" x="960" y="1605" as="geometry" />
+        <mxCell id="i2s_tx" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" value="I2S 发送&#xa;&lt;font style=&quot;font-size:9px&quot;&gt;48 kHz / 16 bit&lt;br&gt;主模式&lt;/font&gt;" vertex="1">
+          <mxGeometry height="80" width="180" x="890" y="1605" as="geometry" />
         </mxCell>
         <mxCell id="out_stage" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontSize=11;" value="DAC → 功率放大 → 输出设备" vertex="1">
-          <mxGeometry height="60" width="420" x="230" y="1820" as="geometry" />
+          <mxGeometry height="60" width="420" x="160" y="1820" as="geometry" />
         </mxCell>
-        <mxCell id="e_ext_parse1" edge="1" parent="1" source="ext_midi" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;strokeWidth=2;" target="midi_parse">
-          <mxGeometry relative="1" as="geometry" />
+        <mxCell id="e_ext_parse1" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;strokeWidth=2;" target="midi_parse">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="384.99999999999955" y="150" as="sourcePoint" />
+          </mxGeometry>
         </mxCell>
-        <mxCell id="e_ext_parse2" edge="1" parent="1" source="ext_mix" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;strokeWidth=2;" target="midi_parse">
+        <mxCell id="e_ext_parse2" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;strokeWidth=2;" target="midi_parse">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="720" y="220.03" />
+              <mxPoint x="650" y="220.03" />
             </Array>
+            <mxPoint x="650.0000000000009" y="150" as="sourcePoint" />
           </mxGeometry>
         </mxCell>
         <mxCell id="e_parse_editor" edge="1" parent="1" source="midi_parse" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;strokeWidth=2;fontSize=9;" target="chan_editor" value="通道消息">
@@ -119,7 +122,7 @@
         <mxCell id="e_parse_alloc" edge="1" parent="1" source="midi_parse" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;strokeWidth=2;fontSize=9;" target="voice_alloc" value="Note On / Off">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="735" y="245" />
+              <mxPoint x="665" y="245" />
             </Array>
           </mxGeometry>
         </mxCell>
@@ -127,7 +130,7 @@
           <mxGeometry relative="1" x="-0.4" as="geometry">
             <mxPoint as="offset" />
             <Array as="points">
-              <mxPoint x="970" y="350" />
+              <mxPoint x="900" y="350" />
             </Array>
           </mxGeometry>
         </mxCell>
@@ -135,19 +138,19 @@
           <mxGeometry relative="1" x="-0.3407" as="geometry">
             <mxPoint as="offset" />
             <Array as="points">
-              <mxPoint x="920" y="240" />
-              <mxPoint x="792.5" y="240" />
+              <mxPoint x="850" y="240" />
+              <mxPoint x="722.5" y="240" />
             </Array>
-            <mxPoint x="992.5" y="280" as="sourcePoint" />
-            <mxPoint x="780" y="340" as="targetPoint" />
+            <mxPoint x="922.5" y="280" as="sourcePoint" />
+            <mxPoint x="710" y="340" as="targetPoint" />
           </mxGeometry>
         </mxCell>
         <mxCell id="e_tmap_read" edge="1" parent="1" source="timbre_map" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#0066CC;strokeWidth=2;dashed=1;fontSize=9;fontColor=#0066CC;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" target="global_table" value="读音色映射表">
           <mxGeometry relative="1" x="0.3472" as="geometry">
             <mxPoint as="offset" />
             <Array as="points">
-              <mxPoint x="1005" y="480" />
-              <mxPoint x="1247.5" y="480" />
+              <mxPoint x="935" y="480" />
+              <mxPoint x="1177.5" y="480" />
             </Array>
           </mxGeometry>
         </mxCell>
@@ -157,40 +160,40 @@
         <mxCell id="e_dmap_alloc" edge="1" parent="1" source="drum_map" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;strokeWidth=2;fontSize=9;dashed=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="voice_alloc" value="timbre_slot">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="1080" y="365" />
-              <mxPoint x="900" y="365" />
+              <mxPoint x="1010" y="365" />
+              <mxPoint x="830" y="365" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="e_dmap_read" edge="1" parent="1" source="drum_map" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#0066CC;strokeWidth=2;dashed=1;fontSize=9;fontColor=#0066CC;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="global_table" value="读鼓组映射表">
+        <mxCell id="e_dmap_read" edge="1" parent="1" source="drum_map" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#0066CC;strokeWidth=2;dashed=1;fontSize=9;fontColor=#0066CC;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="global_table" value="读鼓组映射&lt;span style=&quot;color:#999&quot;&gt;（保留）&lt;/span&gt;表">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="1168" y="450" />
+              <mxPoint x="1098" y="450" />
             </Array>
           </mxGeometry>
         </mxCell>
         <mxCell id="e_editor_write" edge="1" parent="1" source="chan_editor" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#CC0000;strokeWidth=2;dashed=1;fontSize=9;fontColor=#CC0000;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.3;entryY=0;entryDx=0;entryDy=0;" target="chan_table" value="写">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="455" y="440" />
-              <mxPoint x="305" y="440" />
+              <mxPoint x="385" y="440" />
+              <mxPoint x="235" y="440" />
             </Array>
           </mxGeometry>
         </mxCell>
         <mxCell id="e_alloc_write" edge="1" parent="1" source="voice_alloc" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#CC0000;strokeWidth=2;dashed=1;fontSize=9;fontColor=#CC0000;exitX=0.75;exitY=1;exitDx=0;exitDy=0;entryX=0.6;entryY=0;entryDx=0;entryDy=0;" target="voice_table" value="写（分配类字段）">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="792.49" y="440" />
-              <mxPoint x="660.03" y="440" />
+              <mxPoint x="722.49" y="440" />
+              <mxPoint x="590.03" y="440" />
             </Array>
           </mxGeometry>
         </mxCell>
         <mxCell id="e_alloc_seq" edge="1" parent="1" source="voice_alloc" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#666666;strokeWidth=2;fontSize=9;fontColor=#666666;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="voice_seq" value="已分配 / 已释放标记">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="677.51" y="430" />
-              <mxPoint x="150.03" y="430" />
-              <mxPoint x="150.03" y="920" />
+              <mxPoint x="607.51" y="430" />
+              <mxPoint x="80.03" y="430" />
+              <mxPoint x="80.03" y="920" />
             </Array>
           </mxGeometry>
         </mxCell>
@@ -198,8 +201,8 @@
           <mxGeometry relative="1" x="0.1429" as="geometry">
             <mxPoint as="offset" />
             <Array as="points">
-              <mxPoint x="650" y="940" />
-              <mxPoint x="650" y="940" />
+              <mxPoint x="580" y="940" />
+              <mxPoint x="580" y="940" />
             </Array>
           </mxGeometry>
         </mxCell>
@@ -207,43 +210,43 @@
           <mxGeometry relative="1" x="-0.3858" as="geometry">
             <mxPoint as="offset" />
             <Array as="points">
-              <mxPoint x="402.49" y="870" />
-              <mxPoint x="570.03" y="870" />
+              <mxPoint x="332.49" y="870" />
+              <mxPoint x="500.03" y="870" />
             </Array>
-            <mxPoint x="570" y="730" as="targetPoint" />
+            <mxPoint x="500" y="730" as="targetPoint" />
           </mxGeometry>
         </mxCell>
         <mxCell id="e_vtable_fetch" edge="1" parent="1" source="voice_table" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#0066CC;strokeWidth=2;dashed=1;fontSize=9;fontColor=#0066CC;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.271;entryDx=0;entryDy=0;entryPerimeter=0;" target="voice_fetch" value="运行状态">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="635" y="901.7" />
+              <mxPoint x="565" y="901.7" />
             </Array>
           </mxGeometry>
         </mxCell>
         <mxCell id="e_writeback" edge="1" parent="1" source="voice_fetch" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#CC0000;strokeWidth=2;dashed=1;fontSize=9;fontColor=#CC0000;exitX=0.128;exitY=0.004;exitDx=0;exitDy=0;entryX=0.731;entryY=1.008;entryDx=0;entryDy=0;exitPerimeter=0;entryPerimeter=0;" target="voice_table" value="写回运行状态">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="692" y="840" />
-              <mxPoint x="750" y="840" />
-              <mxPoint x="750" y="760" />
-              <mxPoint x="692.81" y="760" />
+              <mxPoint x="622" y="840" />
+              <mxPoint x="680" y="840" />
+              <mxPoint x="680" y="760" />
+              <mxPoint x="622.81" y="760" />
             </Array>
           </mxGeometry>
         </mxCell>
         <mxCell id="e_ctable_fetch" edge="1" parent="1" source="chan_table" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#0066CC;strokeWidth=2;dashed=1;fontSize=9;fontColor=#0066CC;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="voice_fetch" value="调制参数">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="500" y="620" />
-              <mxPoint x="500" y="850" />
-              <mxPoint x="785" y="850" />
+              <mxPoint x="430" y="620" />
+              <mxPoint x="430" y="850" />
+              <mxPoint x="715" y="850" />
             </Array>
           </mxGeometry>
         </mxCell>
         <mxCell id="e_ttable_fetch" edge="1" parent="1" source="timbre_table" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#0066CC;strokeWidth=2;dashed=1;fontSize=9;fontColor=#0066CC;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.6;entryY=0;entryDx=0;entryDy=0;" target="voice_fetch" value="音色参数">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="910" y="820" />
-              <mxPoint x="810" y="820" />
+              <mxPoint x="840" y="820" />
+              <mxPoint x="740" y="820" />
             </Array>
           </mxGeometry>
         </mxCell>
@@ -259,45 +262,45 @@
         <mxCell id="e_adrs_vca" edge="1" parent="1" source="adsr" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9673A6;strokeWidth=2;dashed=1;fontSize=9;fontColor=#9673A6;exitX=1;exitY=0.75;exitDx=0;exitDy=0;entryX=0.3;entryY=1;entryDx=0;entryDy=0;" target="vca" value="包络">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="745" y="1232.51" />
+              <mxPoint x="675" y="1232.51" />
             </Array>
           </mxGeometry>
         </mxCell>
         <mxCell id="e_adrs_svf" edge="1" parent="1" source="adsr" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9673A6;strokeWidth=2;dashed=1;fontSize=9;fontColor=#9673A6;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0.6;entryY=1;entryDx=0;entryDy=0;" target="svf" value="滤波包络调制">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="572.03" y="1197.49" />
+              <mxPoint x="502.03" y="1197.49" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="e_adrs_dds" edge="1" parent="1" source="adsr" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9673A6;strokeWidth=2;dashed=1;fontSize=9;fontColor=#9673A6;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="dds" value="FM 包络调制">
+        <mxCell id="e_adrs_dds" edge="1" parent="1" source="adsr" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9673A6;strokeWidth=2;dashed=1;fontSize=9;fontColor=#9673A6;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="dds" value="FM 包络调制&lt;span style=&quot;color:#999&quot;&gt;（保留）&lt;/span&gt;">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="325" y="1215" />
+              <mxPoint x="255" y="1215" />
             </Array>
           </mxGeometry>
         </mxCell>
         <mxCell id="e_lfo_dds" edge="1" parent="1" source="lfo" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9673A6;strokeWidth=2;dashed=1;fontSize=9;fontColor=#9673A6;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.85;entryY=1;entryDx=0;entryDy=0;" target="dds" value="颤音">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="910.03" y="1160" />
-              <mxPoint x="384.49" y="1160" />
+              <mxPoint x="840.03" y="1160" />
+              <mxPoint x="314.49" y="1160" />
             </Array>
           </mxGeometry>
         </mxCell>
         <mxCell id="e_lfo_svf" edge="1" parent="1" source="lfo" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9673A6;strokeWidth=2;dashed=1;fontSize=9;fontColor=#9673A6;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.9;entryY=1;entryDx=0;entryDy=0;" target="svf" value="LFO 调制">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="820.03" y="1215.03" />
-              <mxPoint x="623" y="1215.03" />
+              <mxPoint x="750.03" y="1215.03" />
+              <mxPoint x="553" y="1215.03" />
             </Array>
           </mxGeometry>
         </mxCell>
         <mxCell id="e_vca_bus" edge="1" parent="1" source="vca" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9933CC;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="chan_bus">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="775" y="1320" />
-              <mxPoint x="325" y="1320" />
+              <mxPoint x="705" y="1320" />
+              <mxPoint x="255" y="1320" />
             </Array>
           </mxGeometry>
         </mxCell>
@@ -310,24 +313,24 @@
         <mxCell id="e_pan_sum" edge="1" parent="1" source="chan_pan" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9933CC;strokeWidth=2;" target="master_sum">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="690" y="1480" />
-              <mxPoint x="570" y="1480" />
+              <mxPoint x="620" y="1480" />
+              <mxPoint x="500" y="1480" />
             </Array>
           </mxGeometry>
         </mxCell>
         <mxCell id="e_pan_send" edge="1" parent="1" source="chan_pan" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9933CC;strokeWidth=2;dashed=1;fontSize=9;fontColor=#9933CC;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.75;entryY=1;entryDx=0;entryDy=0;" target="chan_send" value="发送">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="740" y="1490" />
-              <mxPoint x="1010" y="1490" />
+              <mxPoint x="670" y="1490" />
+              <mxPoint x="940" y="1490" />
             </Array>
           </mxGeometry>
         </mxCell>
         <mxCell id="e_send_fx" edge="1" parent="1" source="chan_send" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9933CC;strokeWidth=2;dashed=1;fontSize=9;fontColor=#9933CC;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="fx" value="3 条总线">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="960" y="1530" />
-              <mxPoint x="330" y="1530" />
+              <mxPoint x="890" y="1530" />
+              <mxPoint x="260" y="1530" />
             </Array>
           </mxGeometry>
         </mxCell>
@@ -343,78 +346,93 @@
         <mxCell id="e_i2s_dac" edge="1" parent="1" source="i2s_tx" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9933CC;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="out_stage">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="1050" y="1850" />
+              <mxPoint x="980" y="1850" />
             </Array>
           </mxGeometry>
         </mxCell>
         <mxCell id="legend_box" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#666666;" value="" vertex="1">
-          <mxGeometry height="440" width="480" x="1390" y="460" as="geometry" />
+          <mxGeometry height="440" width="480" x="1320" y="460" as="geometry" />
         </mxCell>
         <mxCell id="legend_title" parent="1" style="text;html=1;fontSize=14;fontStyle=1;align=left;verticalAlign=middle;" value="图例" vertex="1">
-          <mxGeometry height="25" width="120" x="1410" y="470" as="geometry" />
+          <mxGeometry height="25" width="120" x="1340" y="470" as="geometry" />
         </mxCell>
         <mxCell id="legend_mod" parent="1" style="text;html=1;fontSize=10;align=left;verticalAlign=middle;fontColor=#333333;" value="&lt;b&gt;模块配色&lt;/b&gt;" vertex="1">
-          <mxGeometry height="20" width="440" x="1410" y="505" as="geometry" />
+          <mxGeometry height="20" width="440" x="1340" y="505" as="geometry" />
         </mxCell>
         <mxCell id="legend_boxcalc" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;" value="" vertex="1">
-          <mxGeometry height="18" width="30" x="1412" y="532" as="geometry" />
+          <mxGeometry height="18" width="30" x="1342" y="532" as="geometry" />
         </mxCell>
         <mxCell id="legend_txtcalc" parent="1" style="text;html=1;fontSize=10;align=left;verticalAlign=middle;" value="计算模块（单声部 / 通道 / 全局）" vertex="1">
-          <mxGeometry height="20" width="390" x="1450" y="531" as="geometry" />
+          <mxGeometry height="20" width="390" x="1380" y="531" as="geometry" />
         </mxCell>
         <mxCell id="legend_boxsch" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;" value="" vertex="1">
-          <mxGeometry height="18" width="30" x="1412" y="557" as="geometry" />
+          <mxGeometry height="18" width="30" x="1342" y="557" as="geometry" />
         </mxCell>
         <mxCell id="legend_txtsch" parent="1" style="text;html=1;fontSize=10;align=left;verticalAlign=middle;" value="调度模块（事件类 / 周期类）" vertex="1">
-          <mxGeometry height="20" width="390" x="1450" y="556" as="geometry" />
+          <mxGeometry height="20" width="390" x="1380" y="556" as="geometry" />
         </mxCell>
         <mxCell id="legend_boxmod" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;" value="" vertex="1">
-          <mxGeometry height="18" width="30" x="1412" y="582" as="geometry" />
+          <mxGeometry height="18" width="30" x="1342" y="582" as="geometry" />
         </mxCell>
         <mxCell id="legend_txtmod" parent="1" style="text;html=1;fontSize=10;align=left;verticalAlign=middle;" value="调制源（ADSR / LFO）" vertex="1">
-          <mxGeometry height="20" width="390" x="1450" y="581" as="geometry" />
+          <mxGeometry height="20" width="390" x="1380" y="581" as="geometry" />
         </mxCell>
         <mxCell id="legend_boxtab" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;" value="" vertex="1">
-          <mxGeometry height="18" width="30" x="1412" y="607" as="geometry" />
+          <mxGeometry height="18" width="30" x="1342" y="607" as="geometry" />
         </mxCell>
         <mxCell id="legend_txttab" parent="1" style="text;html=1;fontSize=10;align=left;verticalAlign=middle;" value="状态表（§四）" vertex="1">
-          <mxGeometry height="20" width="390" x="1450" y="606" as="geometry" />
+          <mxGeometry height="20" width="390" x="1380" y="606" as="geometry" />
         </mxCell>
         <mxCell id="legend_boxext" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;" value="" vertex="1">
-          <mxGeometry height="18" width="30" x="1412" y="632" as="geometry" />
+          <mxGeometry height="18" width="30" x="1342" y="632" as="geometry" />
         </mxCell>
         <mxCell id="legend_txtext" parent="1" style="text;html=1;fontSize=10;align=left;verticalAlign=middle;" value="板外（端口 / DAC 链路）" vertex="1">
-          <mxGeometry height="20" width="390" x="1450" y="631" as="geometry" />
+          <mxGeometry height="20" width="390" x="1380" y="631" as="geometry" />
         </mxCell>
         <mxCell id="legend_line" parent="1" style="text;html=1;fontSize=10;align=left;verticalAlign=middle;fontColor=#333333;" value="&lt;b&gt;连线含义&lt;/b&gt;" vertex="1">
-          <mxGeometry height="20" width="440" x="1410" y="668" as="geometry" />
+          <mxGeometry height="20" width="440" x="1340" y="668" as="geometry" />
         </mxCell>
         <mxCell id="legend_l1" parent="1" style="text;html=1;fontSize=10;align=left;verticalAlign=middle;fontColor=#9933CC;" value="紫色实线：音频样本流" vertex="1">
-          <mxGeometry height="18" width="440" x="1410" y="692" as="geometry" />
+          <mxGeometry height="18" width="440" x="1340" y="692" as="geometry" />
         </mxCell>
         <mxCell id="legend_l2" parent="1" style="text;html=1;fontSize=10;align=left;verticalAlign=middle;fontColor=#9933CC;" value="紫色虚线：效果发送总线（干信号抽出）" vertex="1">
-          <mxGeometry height="18" width="440" x="1410" y="714" as="geometry" />
+          <mxGeometry height="18" width="440" x="1340" y="714" as="geometry" />
         </mxCell>
         <mxCell id="legend_l3" parent="1" style="text;html=1;fontSize=10;align=left;verticalAlign=middle;fontColor=#9673A6;" value="浅紫虚线：调制（ADSR / LFO → 目标模块）" vertex="1">
-          <mxGeometry height="18" width="440" x="1410" y="736" as="geometry" />
+          <mxGeometry height="18" width="440" x="1340" y="736" as="geometry" />
         </mxCell>
         <mxCell id="legend_l4" parent="1" style="text;html=1;fontSize=10;align=left;verticalAlign=middle;" value="黑色实线：MIDI 消息流（事件类）" vertex="1">
-          <mxGeometry height="18" width="440" x="1410" y="758" as="geometry" />
+          <mxGeometry height="18" width="440" x="1340" y="758" as="geometry" />
         </mxCell>
         <mxCell id="legend_l5" parent="1" style="text;html=1;fontSize=10;align=left;verticalAlign=middle;fontColor=#009900;" value="绿色虚线：索引 / 参数下发（周期类）" vertex="1">
-          <mxGeometry height="18" width="440" x="1410" y="780" as="geometry" />
+          <mxGeometry height="18" width="440" x="1340" y="780" as="geometry" />
         </mxCell>
         <mxCell id="legend_l6" parent="1" style="text;html=1;fontSize=10;align=left;verticalAlign=middle;fontColor=#0066CC;" value="蓝色虚线：读表" vertex="1">
-          <mxGeometry height="18" width="440" x="1410" y="802" as="geometry" />
+          <mxGeometry height="18" width="440" x="1340" y="802" as="geometry" />
         </mxCell>
         <mxCell id="legend_l7" parent="1" style="text;html=1;fontSize=10;align=left;verticalAlign=middle;fontColor=#CC0000;" value="红色虚线：写表" vertex="1">
-          <mxGeometry height="18" width="440" x="1410" y="824" as="geometry" />
+          <mxGeometry height="18" width="440" x="1340" y="824" as="geometry" />
         </mxCell>
         <mxCell id="legend_l8" parent="1" style="text;html=1;fontSize=10;align=left;verticalAlign=middle;fontColor=#666666;" value="灰色虚线：调度标记（已分配 / 已释放）" vertex="1">
-          <mxGeometry height="18" width="440" x="1410" y="846" as="geometry" />
+          <mxGeometry height="18" width="440" x="1340" y="846" as="geometry" />
         </mxCell>
         <mxCell id="legend_l9" parent="1" style="text;html=1;fontSize=10;align=left;verticalAlign=middle;fontColor=#666666;" value="灰色粗虚线框：功能分区（层）" vertex="1">
-          <mxGeometry height="18" width="440" x="1410" y="868" as="geometry" />
+          <mxGeometry height="18" width="440" x="1340" y="868" as="geometry" />
+        </mxCell>
+        <mxCell id="vis_box" parent="1" style="rounded=0;whiteSpace=wrap;html=1;dashed=1;fillColor=none;strokeColor=#8A8A8A;verticalAlign=top;fontSize=11;" value="可视化（像素域 35 MHz）" vertex="1">
+          <mxGeometry height="230" width="230" x="1330" y="1440" as="geometry" />
+        </mxCell>
+        <mxCell id="vis_a" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8E4F5;strokeColor=#6C5CE7;" value="波形渲染" vertex="1">
+          <mxGeometry height="36" width="190" x="1350" y="1474" as="geometry" />
+        </mxCell>
+        <mxCell id="vis_b" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8E4F5;strokeColor=#6C5CE7;" value="32 频带频谱" vertex="1">
+          <mxGeometry height="36" width="190" x="1350" y="1530" as="geometry" />
+        </mxCell>
+        <mxCell id="vis_c" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8E4F5;strokeColor=#6C5CE7;" value="LCD 时序 800×480" vertex="1">
+          <mxGeometry height="36" width="190" x="1350" y="1590" as="geometry" />
+        </mxCell>
+        <mxCell id="vis_edge" edge="1" parent="1" source="master_out" style="endArrow=open;dashed=1;html=1;strokeColor=#A78BFA;fontSize=9;" target="vis_box" value="音频抽头（只读）">
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>

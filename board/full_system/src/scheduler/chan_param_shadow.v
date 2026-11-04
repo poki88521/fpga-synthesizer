@@ -137,8 +137,8 @@ module chan_param_shadow #(
         for (gi = 0; gi < NCH; gi = gi + 1) begin : g_sub
             always @(posedge clk or negedge rst_n_sync) begin
                 if (!rst_n_sync) begin
-                    ext_volume    [gi*7  +: 7 ] <= 7'd0;
-                    ext_expression[gi*7  +: 7 ] <= 7'd0;
+                    ext_volume    [gi*7  +: 7 ] <= 7'd100;   // 2026-11-02：与 chan_table 复位值一致（原来 0 ⇒ 无 MIDI 时增益为 0）
+                    ext_expression[gi*7  +: 7 ] <= 7'd127;   // 2026-11-02：同上（0 ⇒ 测试模式几乎无声、只剩噪声）
                     ext_send_rev  [gi*7  +: 7 ] <= 7'd0;
                     ext_send_cho  [gi*7  +: 7 ] <= 7'd0;
                     ext_send_del  [gi*7  +: 7 ] <= 7'd0;

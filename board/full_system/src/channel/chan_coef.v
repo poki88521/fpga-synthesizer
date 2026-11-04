@@ -55,6 +55,10 @@ module chan_coef #(
     reg       p1_v, p2_v;
     reg [3:0] p1_c, p2_c;
     reg signed [15:0] p1_gch;
+    //  2026-10-30：每通道增益一阶平滑（消除音量变化时的"噼啪"）
+    //  访问速率 = 49.152 MHz / 16 = 3.072 MHz；每次访问走 diff/4096
+    //  ⇒ 时间常数 = 4096 x 16 拍 / 49.152 MHz ≈ **1.33 ms**（听不出延迟，足以消除阶跃）
+    reg signed [15:0] sm_gch [0:NCH-1];
 
     wire [3:0] ic = pc[3:0];
     wire       issue = (pc < NCH);
@@ -69,6 +73,20 @@ module chan_coef #(
 
     integer k;
 
+    //  ---- 一阶平滑：sm_nxt = sm + (target - sm)/4096（带四舍五入，差很小时直接到位）----
+    wire signed [15:0] sm_cur = sm_gch[p1_c];
+    wire signed [31:0] sm_d   = $signed(p1_gch) - $signed(sm_cur);
+    wire signed [31:0] sm_abs = (sm_d < 0) ? -sm_d : sm_d;
+    wire signed [31:0] sm_rnd = (sm_d < 0) ? (sm_d - 32'sd2048) : (sm_d + 32'sd2048);
+    wire signed [31:0] sm_stp = (sm_abs > 32'sd2048) ? (sm_rnd >>> 12) : sm_d;
+    //  ⚠ 2026-11-02 修正：**位选择 `sm_stp[15:0]` 在 Verilog 里永远是无符号**，
+    //     直接参与 `sm_cur + sm_stp[15:0]` 会让整个表达式变无符号 ⇒ 负的步进被当成
+    //     巨大的正数 ⇒ sat16 钳到 32767 ⇒ 平滑值永远停在"最大增益"，**任何音量/表情
+    //     变化都被忽略**（现场现象：CC11 表情无效果、CC7 单通道音量无效果）。
+    //     修法：先赋给 signed wire 保住符号性，再相加。
+    wire signed [15:0] sm_stp16 = sm_stp[15:0];
+    wire signed [15:0] sm_nxt   = sat16(sm_cur + sm_stp16);
+
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             pc    <= 5'd0;
@@ -78,6 +96,7 @@ module chan_coef #(
             for (k = 0; k < NCH; k = k + 1) begin
                 gL_flat[k*16 +: 16] <= 16'sd32767;   // 默认系数 = 1.0
                 gR_flat[k*16 +: 16] <= 16'sd32767;
+                sm_gch[k]           <= 16'sd32768;   // 平滑器初值 = 1.0
             end
         end else begin
             pc <= pc + 5'd1;
@@ -87,12 +106,13 @@ module chan_coef #(
             p1_c   <= ic;
             p1_gch <= gch_c;
 
-            // 第 2 级：x 声像 -> gL / gR（p1_gch / p1_c 同源，落盘一致）
+            // 第 2 级：x 声像 -> gL / gR（用**已平滑**的 sm_gch，p1_c 同源）
             p2_v <= p1_v;
             p2_c <= p1_c;
             if (p1_v) begin
-                gL_flat[p1_c*16 +: 16] <= sat16((p1_gch * pgL) >>> 15);
-                gR_flat[p1_c*16 +: 16] <= sat16((p1_gch * pgR) >>> 15);
+                gL_flat[p1_c*16 +: 16] <= sat16((sm_cur * pgL) >>> 15);
+                gR_flat[p1_c*16 +: 16] <= sat16((sm_cur * pgR) >>> 15);
+                sm_gch [p1_c]           <= sm_nxt;
             end
         end
     end

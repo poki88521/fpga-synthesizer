@@ -33,7 +33,7 @@
 ---
 ## 一、简介
 
-> **状态标注约定**：本表「本项目落点」一列中，标 **（暂缓）** 的字段属本期不实现的功能
+> **状态标注约定**：本表「本项目落点」一列中，标 **（保留）** 的字段属本期不实现的功能
 > （LFO / 颤音 / FM / 双波表 / 鼓组，详见 `技术文档.md` 附录 B），
 > 其字段已从状态表移出，**RTL 阶段不要按本表去读这些字段**。
 MIDI 是一种串行通信协议，用于在电子乐器与计算机之间传输演奏信息。
@@ -148,7 +148,7 @@ Bn  CC号  值
 | CC | 名称 | 说明 | 本项目落点 |
 |---|---|---|---|
 | [[#音色库选择（CC0 / CC32）\|0]] | Bank Select MSB | 音色库号高 7 位 | 通道表 `bank_msb` |
-| 1 | Modulation Wheel | 调制轮 | 通道表 `mod_wheel`（**暂缓**，随 LFO） |
+| 1 | Modulation Wheel | 调制轮 | 通道表 `mod_wheel`（**保留**，随 LFO） |
 | 2 | Breath Controller | 呼吸控制器 | — |
 | 4 | Foot Controller | 脚踏控制器 | — |
 | 5 | Portamento Time | 滑音时间 | — |
@@ -171,7 +171,7 @@ Bn  CC号  值
 | 72 | Sound Controller 3 | 释音时间 | 通道表 `release_mod` |
 | 73 | Sound Controller 4 | 起音时间 | 通道表 `attack_mod` |
 | 74 | Sound Controller 5 | 亮度 / 截止频率 | 通道表 `filter_cutoff_mod` |
-| 75–79 | Sound Controller 6–10 | Decay / 颤音速率 / 颤音深度 / 颤音延迟 / 音色控制 | 77 关联 `vibrato_depth`（**暂缓**，随 LFO） |
+| 75–79 | Sound Controller 6–10 | Decay / 颤音速率 / 颤音深度 / 颤音延迟 / 音色控制 | 77 关联 `vibrato_depth`（**保留**，随 LFO） |
 | 80–83 | General Purpose Controller 5–8 | 通用控制器 | — |
 | 84 | Portamento Control | 滑音控制 | — |
 | 88 | High Resolution Velocity Prefix | 高清力度前缀（较新规范追加） | — |
@@ -277,7 +277,7 @@ CC 32–63  = LSB（低位 / 细调）
 > 另：**CC64 及以上是单字节 7 位控制器，没有 LSB 配对**。只有 CC0–31 参与配对。
 
 #### 其他
-以下为已知但**尚未讨论清楚**的内容，此处仅记录，待后续确认。
+以下为协议细节的补充存档。
 
 **（1）RPN / NRPN（CC 98–101 + CC6）**
 用 CC98–101 选择参数号，再用 CC6 赋值：
@@ -302,7 +302,7 @@ Bnh 65h 00h   Bnh 64h 00h   Bnh 06h vv
 | 127, 127 | RPN 空（终止） |
 
 > 本项目目前只用到 **RPN 0,0（弯音范围）**。
-> GM2 另有一组 NRPN 用于音源编辑（鼓件音高、滤波、包络等），**尚未逐条核实**，需要时再查规范原文。
+> GM2 另有一组 NRPN 用于音源编辑（鼓件音高、滤波、包络等），以规范原文为准。
 
 **（2）通道模式消息（CC 120–127）**
 All Sound Off / Reset All Controllers / All Notes Off / Omni / Mono / Poly 等。**本项目实现 120（All Sound Off）/ 121（Reset All Controllers）/ 123（All Notes Off），其余忽略**——落点与"CC121 不复位的 7 项"见 `硬件实现.md` §三.六.5。

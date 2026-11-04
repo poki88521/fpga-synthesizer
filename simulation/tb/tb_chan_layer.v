@@ -129,6 +129,7 @@ module tb_chan_layer;
         integer i;
         reg signed [31:0] acc;
         reg signed [23:0] a24;
+        reg signed [63:0] pmul;
         reg signed [23:0] atmp;
         reg signed [15:0] gch, gl, gr;
         reg signed [6:0]  vv, ee;
@@ -140,14 +141,16 @@ module tb_chan_layer;
                     acc  = acc + {{8{atmp[23]}}, atmp};
                 end
             end
-            a24 = tsat24(acc);
+            a24 = acc;    // 2026-10-30: 跟随 RTL，去掉乘法前的提前饱和
             vv  = (p_vol(scen) > c[6:0]) ? (p_vol(scen) - c[6:0]) : 7'd1;
             ee  = p_exp(scen);
             gch = tsat16(($signed({1'b0,vv}) <<< 8) * ($signed({1'b0,ee}) <<< 8) >>> 15);
             gl  = tsat16((gch * p_pl(scen)) >>> 15);
             gr  = tsat16((gch * p_pr(scen)) >>> 15);
-            el  = tsat24((a24 * gl + 48'sd16384) >>> 15);
-            er  = tsat24((a24 * gr + 48'sd16384) >>> 15);
+            pmul = $signed(a24) * $signed(gl);
+            el  = tsat24(((pmul >>> 1) + 48'sd16384) >>> 15);   // 2026-10-30: >>>1 = -6dB 余量
+            pmul = $signed(a24) * $signed(gr);
+            er  = tsat24(((pmul >>> 1) + 48'sd16384) >>> 15);
         end
     endtask
 
