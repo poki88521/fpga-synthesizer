@@ -1,53 +1,48 @@
 # 基于 FPGA 的实时多音色合成电子乐器引擎
 
-项目具体内容详见[技术文档](documents/技术文档.md)。
-
-## 目录结构
+## 一、简介
+以高云 GW5AST-138为唯一音频运算平台的 32 复音数字合成器，发声/滤波/包络/混音/效果全部由 HDL 逐样本完成，不依赖预录 PCM、不使用处理器做串行音频运算。可实现48kHz/16 bit下的32复音，端到端延迟仅0.92ms。
+> 项目具体内容详见[技术文档](documents/技术文档.md)，[硬件实现](master/documents/硬件实现)
+> 项目协作者：组长[c4llM3r4na](https://github.com/c4llM3r4na)；组员[poki88521](https://github.com/poki88521)，[MAJIAOKER](https://github.com/MAJIAOKER)
+## 二、目录结构
 
 ```
 fpga-synthesizer/
-├── rtl/                  可综合 Verilog（按设计四层分子目录；rtl/ 下所有 *.v 一起综合）
-│   ├── common/           通用模块（归一化/饱和、隔直、PT8211 串行发送、复位同步…）
-│   ├── voice/            单声部处理层（DDS + 波表、SVF、ADSR、VCA）
-│   ├── channel/          通道处理层（通道缓存/系数/累加、效果发送总线）
-│   ├── global/           全局处理层（混响/合唱/延迟、主混音、主输出）
-│   ├── scheduler/        调度层（MIDI 解析、状态表编辑、音色映射、声部分配/时序/取数）
-│   └── top/              顶层与约束（synth_top、PLL/时钟配置、.cst/.sdc）
-├── simulation/           仿真
-│   ├── tb/               testbench（tb_full_chain.v 等）
-│   ├── models/           厂商原语仿真模型（gowin_prim_stub.v 等，不入库）
-│   ├── tools/            wav.py 等仿真辅助脚本
-│   ├── run_demo.sh       一键：编译 → 仿真 → 转 WAV
-│   └── out/              仿真产物（不入库）
-├── board/                板级外设验证工程，每个 *_test/ 一个 Gowin 工程（.v + .cst + .sdc）
-├── documents/            设计文档
-│   ├── 技术文档.md         总体设计（架构 / 状态表 / 调度与时序）
-│   ├── 硬件实现.md         时钟复位 / 引脚 / 定点口径 / 波表 ROM
-│   ├── MIDI协议.md         MIDI 协议说明
-│   ├── 要求.md            赛题要求
-│   └── 要求.docx          赛题要求（打印版）
-├── drawio/               架构图
-├── wave_table/           波表转换（convert.py + 输入 wav），生成物进 wave_table/out/（不入库）
-├── demo/                 各模块 demo 的成品与说明（试听用）
-│   └── demoForMixedPart/ 模块三（通道 + 全局处理层）试听成品
-├── material/             厂商资料与本地素材（不纳入版本管理）
-└── scratch/              组内草稿与交流文档
+├── rtl/                                 Verilog代码及约束文件
+│   ├── common/                          通用模块
+│   ├── voice/                           单声部处理层
+│   ├── channel/                         通道处理层
+│   ├── global/                          全局处理层
+│   ├── scheduler/                       调度层
+│   ├── vis/                             屏幕显示模块
+│   └── top/                             顶层与约束
+├── documents/                           设计文档
+│   ├── 技术文档.md                       总体设计
+│   ├── 硬件实现.md                       时钟复位/引脚/定点口径等具体硬件实现方案
+│   ├── MIDI协议.md                       MIDI 协议整理
+│   ├── 音色参数表.md                     有关音色槽的具体参数
+│   ├── 使用手册.md                       包含引脚、使用方式等若干具体问题
+│   ├── 赛题要求_原文md版.md              赛题要求原文
+└── drawio/                              架构图（.drawio)
 ```
+- 测试代码、工程文件等开发相关内容详见[develop](https://github.com/poki88521/fpga-synthesizer/tree/develop)分支
+- 版本介绍：
 
-## 约定
-
-- **生成物不入库**：波表生成文件（`.coe` / `.hex` / `.mif`）、仿真输出等统一放进对应层级的 `out/`，
-  由 `.gitignore` 忽略，需要时按下面命令重新生成。
-- **可综合代码与板级测试分开**：`rtl/` 只放设计代码，`board/` 放各外设验证工程，
-  避免一键编译时把测试顶层一起吃进去。
-- `scratch/` 下的文档（除 `agent/`）由人工维护，agent 只读。
-
-## 常用命令
-
-```sh
-# 跑模块三全链仿真 demo（需要 iverilog 与 python3）
-sh simulation/run_demo.sh
-
-# 重新生成波表 ROM 初始化文件（需要 numpy / soundfile / scipy）
-cd wave_table && python3 convert.py
-```
+| tag                         | 含义                    |
+| --------------------------- | --------------------- |
+| `stable-20261023-nodisplay` | 稳定版：失真修复，时序零违例；无显示屏   |
+| `baseline-E-20261025`       | **可视化版本加入后**的第一个稳定点   |
+| `stable-20261028`           | "98%"；混响重构修复（5 处 bug） |
+| `stable-20261030`           | **频率显示（频谱）加入**        |
+| **`release`**               | 终版                    |
+## 三、核心指标
+| 项目            | 值                                                    |
+| ------------- | ---------------------------------------------------- |
+| 复音数           | **32**（8 泳道 × 4 串行时隙）                                |
+| 采样率 / 位深      | 48.000 kHz / 16 bit（I2S-LSBJ → PT8211）               |
+| 主时钟           | 24.576 MHz ×2 = **49.152 MHz** = 48 kHz × **1024 拍** |
+| 吞吐量           | **1.536 M** 振荡器样本/秒                                  |
+| 音色槽 / MIDI 通道 | 8 / 16                                               |
+| 效果器           | 混响（Freeverb，16 梳状 + 4 全通）、合唱、延迟，并行湿路                 |
+| 端到端延迟         | **0.94 ms**（MIDI 首字节 → 出声；FPGA 内部 ≈15 µs）            |
+| 可视化           | 800×480 波形（11 px）+ 32 频带频谱（60 Hz~16 kHz）             |
