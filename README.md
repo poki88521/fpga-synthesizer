@@ -2,8 +2,8 @@
 
 ## 一、简介
 以高云 GW5AST-138为唯一音频运算平台的 32 复音数字合成器，发声/滤波/包络/混音/效果全部由 HDL 逐样本完成，不依赖预录 PCM、不使用处理器做串行音频运算。可实现48kHz/16 bit下的32复音，端到端延迟仅0.92ms。
-> 项目具体内容详见[技术文档](documents/技术文档.md)，[硬件实现](master/documents/硬件实现)
-> 项目协作者：组长[c4llM3r4na](https://github.com/c4llM3r4na)；组员[poki88521](https://github.com/poki88521)，[MAJIAOKER](https://github.com/MAJIAOKER)
+- 项目具体内容详见[技术文档](documents/技术文档.md)，[硬件实现](master/documents/硬件实现)
+- 项目协作者：组长[c4llM3r4na](https://github.com/c4llM3r4na)；组员[poki88521](https://github.com/poki88521)，[MAJIAOKER](https://github.com/MAJIAOKER)
 ## 二、目录结构
 
 ```
