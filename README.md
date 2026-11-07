@@ -26,6 +26,7 @@ fpga-synthesizer/
 └── drawio/                              架构图（.drawio)
 ```
 - 测试代码、工程文件等开发相关内容详见[develop](https://github.com/poki88521/fpga-synthesizer/tree/develop)分支
+- 测试网页详见[test_web](https://github.com/poki88521/fpga-synthesizer/tree/test_web)分支
 - 版本介绍：
 
 | tag                         | 含义                    |
