@@ -1,0 +1,3003 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FPGA 合成器 · MIDI 发送器</title>
+<style>
+  :root{
+    --bg:#12141a; --panel:#1b1e27; --panel2:#232733; --line:#333a4a;
+    --fg:#e6e9f0; --dim:#98a0b3; --acc:#4f8cff; --ok:#3ecf8e; --warn:#ffb020; --err:#ff5c5c;
+    --mono:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--fg);
+       font:14px/1.5 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+       /* 整页不滚动：面板区自己滚，日志永远贴在底部（点完按钮低头就能看字节） */
+       display:flex;flex-direction:column;overflow:hidden}
+  header{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;
+         align-items:baseline;gap:12px;flex-wrap:wrap;flex:0 0 auto}
+  header h1{margin:0;font-size:16px;font-weight:600}
+  header .sub{color:var(--dim);font-size:12px}
+  .wrap{flex:1 1 auto;min-height:0;overflow:auto;padding:14px}
+  /* 分类栏：不滚动，点一个类型只显示该类面板 */
+  #catBar{flex:0 0 auto;display:flex;gap:6px;align-items:center;flex-wrap:wrap;
+          padding:7px 14px;border-bottom:1px solid var(--line);background:var(--panel)}
+  #catBar button.mini.on{background:var(--acc);border-color:var(--acc);color:#fff}
+  /* 面板区用多列流：列高自动平衡，不像 grid 那样被同排最高的面板撑出大片空白 */
+  #panelFlow{column-count:2;column-gap:14px}
+  @media (max-width:900px){#panelFlow{column-count:1}}
+  #panelFlow > .panel{break-inside:avoid;page-break-inside:avoid;margin:0 0 14px}
+  .col{display:flex;flex-direction:column;gap:14px;min-width:0}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+  .panel h2{margin:0 0 10px;font-size:13px;font-weight:600;color:var(--dim);
+            letter-spacing:.06em;text-transform:uppercase}
+  /* 面板折叠：点标题栏展开/收起（10–13 默认收起，免得一屏全是控件） */
+  .panel[data-fold] > h2{cursor:pointer;user-select:none;margin-bottom:0}
+  .panel[data-fold] > h2::after{
+    content:'▶';font-size:15px;line-height:1;margin-left:8px;
+    color:var(--acc);vertical-align:-1px}
+  .panel[data-fold]:not(.collapsed) > h2::after{content:'▼'}
+  .panel[data-fold]:not(.collapsed) > h2{margin-bottom:10px}
+  .panel[data-fold].collapsed > *:not(h2){display:none}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:9px}
+  .row:last-child{margin-bottom:0}
+  label{color:var(--dim);font-size:13px;min-width:0}
+  input[type=number],input[type=text],select,textarea{
+    background:var(--panel2);color:var(--fg);border:1px solid var(--line);
+    border-radius:6px;padding:6px 8px;font:13px/1.2 var(--mono);min-width:0}
+  textarea{width:100%;font:13px/1.6 var(--mono);resize:vertical;min-height:62px}
+  input[type=number]{width:86px}
+  select#midiCh{width:96px}
+  input[type=text]{width:160px}
+  input[type=range]{flex:1;min-width:110px;accent-color:var(--acc)}
+  button{background:var(--panel2);color:var(--fg);border:1px solid var(--line);
+         border-radius:6px;padding:7px 13px;font-size:13px;cursor:pointer}
+  button:hover:not(:disabled){border-color:var(--acc);color:#fff}
+  button:disabled{opacity:.42;cursor:not-allowed}
+  input:disabled,select:disabled{opacity:.45;cursor:not-allowed}
+  button.primary{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+  button.primary:hover:not(:disabled){filter:brightness(1.12)}
+  button.danger{border-color:#6b2b2b}
+  button.danger:hover:not(:disabled){border-color:var(--err);color:#fff}
+  button.mini{padding:3px 8px;font-size:12px}
+  button.mini.on{border-color:var(--acc);color:#fff;background:rgba(79,140,255,.18)}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;
+        border:1px solid var(--line);color:var(--dim)}
+  .pill.on{border-color:var(--ok);color:var(--ok)}
+  .pill.off{border-color:#555;color:#777}
+  .note{border-left:3px solid var(--acc);background:rgba(79,140,255,.09);
+        padding:8px 11px;border-radius:0 6px 6px 0;font-size:12.5px;color:#c7d0e4}
+  .note.warn{border-color:var(--warn);background:rgba(255,176,32,.10)}
+  .note.err{border-color:var(--err);background:rgba(255,92,92,.10)}
+  .big{font:600 22px/1.2 var(--mono);letter-spacing:.02em}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;font-size:13px}
+  .kv dt{color:var(--dim)}
+  .kv dd{margin:0;font-family:var(--mono)}
+  table{width:100%;border-collapse:collapse;font:12.5px/1.4 var(--mono)}
+  .mxTable th,.mxTable td{padding:3px 6px;text-align:right;border-bottom:1px solid #202632}
+  .mxTable th{color:var(--dim);font-weight:500;font-size:12px;position:sticky;top:0;background:var(--panel)}
+  .mxTable th:first-child,.mxTable td:first-child{text-align:left;width:64px}
+  .mxTable th:nth-child(2),.mxTable td:nth-child(2){text-align:left;width:110px;font-family:inherit}
+  .mxTable tbody tr{cursor:pointer}
+  .mxTable tbody tr:hover{background:#1b222c}
+  .mxTable tbody tr.on{background:#1a2740}
+  .mxTable tbody tr.on td:first-child{color:var(--acc);font-weight:600}
+  .mxTable tbody tr.on td:first-child::before{content:'\25CF  ';font-size:9px}
+  th,td{text-align:left;padding:4px 6px;border-bottom:1px solid var(--line)}
+  th{color:var(--dim);font-weight:500}
+  /* 日志区：固定在底部，中间一条可上下拖的分割条 */
+  #logResizer{flex:0 0 auto;height:9px;margin:0 14px 4px;border-radius:5px;
+              background:var(--line);cursor:row-resize;position:relative}
+  #logResizer::after{content:'';position:absolute;left:50%;top:3px;width:44px;height:3px;
+                     margin-left:-22px;border-radius:2px;background:var(--dim);opacity:.55}
+  #logResizer:hover{background:var(--acc)}
+  #logResizer:hover::after{background:#fff;opacity:.9}
+  #logPanel{flex:0 0 auto;margin:0 14px 14px;display:flex;flex-direction:column;
+            height:34vh;min-height:110px}
+  #logPanel h2{flex:0 0 auto}
+  #log{flex:1 1 auto;min-height:0;overflow:auto;background:#0d0f14;border:1px solid var(--line);
+       border-radius:8px;padding:8px;font:12.5px/1.55 var(--mono);white-space:pre-wrap;
+       word-break:break-all}
+  .le{display:block;border-bottom:1px solid #1b1f28;padding:2px 0}
+  .le .t{color:#5d667a}
+  .le .hx{color:var(--acc)}
+  .le .tx{color:#cfd6e6}
+  .le.sys .hx{color:var(--warn)}
+  .le.warn .tx{color:var(--warn)}
+  .le.err .hx,.le.err .tx{color:var(--err)}
+  .muted{color:var(--dim)}
+  .hint{font-size:12px;color:var(--dim);margin-top:6px}
+  .sep{height:1px;background:var(--line);margin:11px 0}
+  .inline{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  code{font-family:var(--mono);background:var(--panel2);padding:1px 5px;border-radius:4px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>FPGA 合成器 · MIDI 发送器</h1>
+  <span class="sub">31250 baud 8N1 · 单向发送</span>
+  <span id="support" class="pill off">检测中…</span>
+</header>
+
+<!-- 分类栏：不滚动。点一个类型只显示该类面板，「全部」恢复 -->
+<nav id="catBar">
+  <span class="muted" style="font-size:12px;margin-right:2px">显示</span>
+  <button class="mini on" data-catbtn="all">全部</button>
+  <button class="mini" data-catbtn="conn">连接</button>
+  <button class="mini" data-catbtn="play">演奏</button>
+  <button class="mini" data-catbtn="mod">调制</button>
+  <button class="mini" data-catbtn="cmd">指令</button>
+      <button class="mini" data-catbtn="mix">混音</button>
+  <span id="catHint" class="muted" style="font-size:11.5px;margin-left:6px"></span>
+</nav>
+
+<div class="wrap">
+  <div id="panelFlow">
+
+    <!-- 连接 -->
+    <section class="panel" data-fold data-cat="conn">
+      <h2>1 · 串口连接</h2>
+
+      <!-- 自助提示：内容随「能否连、连没连」变化，见 refreshConnHint() -->
+      <div class="note" id="connHint"></div>
+
+      <div class="row" style="margin-top:10px">
+        <button id="btnConn" class="primary">连接串口</button>
+        <button id="btnDisconn" disabled>断开</button>
+        <button id="btnProbe" title="依次用几个波特率试着打开所选串口，用来区分「驱动不接受 31250」和「这个口根本打不开」">串口自检</button>
+        <button id="btnPick" title="重新弹出浏览器的串口列表，换一个设备">更换设备</button>
+        <span id="connState" class="pill off">未连接</span>
+      </div>
+
+      <div class="row">
+        <label for="baud">波特率</label>
+        <select id="baud">
+          <option value="31250" selected>31250（MIDI 标准）</option>
+          <option value="38400">38400</option>
+          <option value="57600">57600</option>
+          <option value="115200">115200</option>
+          <option value="custom">自定义…</option>
+        </select>
+        <input type="number" id="baudCustom" min="300" max="3000000" value="31250" style="display:none">
+        <span class="muted" id="baudWarn"></span>
+      </div>
+
+      <dl class="kv" id="devInfo" style="display:none;margin-top:8px">
+        <dt>已连设备</dt><dd id="devDesc">—</dd>
+      </dl>
+
+      <div class="note err" id="baudErr" style="display:none"></div>
+      <div class="note warn" id="baudHint" style="display:none">
+        ⚠ 非 31250 波特率：FPGA 侧位定时是 <code>f_clk ÷ 1573 = 31250 Hz</code> 固定值，
+        发别的波特率它收不到。这里只用于排查 USB-TTL 驱动问题。
+      </div>
+    </section>
+
+    <!-- 端口与通道 -->
+    <section class="panel" data-fold data-cat="conn">
+      <h2>2 · 端口与通道</h2>
+      <div class="row">
+        <label><input type="radio" name="pmode" value="instrument"> 乐器端口</label>
+        <label><input type="radio" name="pmode" value="mixer" checked> 混音器端口</label>
+      </div>
+      <div class="note" id="pmodeNote"></div>
+      <div class="sep"></div>
+      <div class="row">
+        <label for="midiCh">MIDI 通道</label>
+        <select id="midiCh"></select>
+        <span class="muted">1–16　　本页发出的所有消息都用这一个通道</span>
+      </div>
+    </section>
+
+    <!-- 音色 -->
+    <section class="panel" data-fold data-cat="play">
+      <h2>3 · 音色选择（Bank Select + Program Change）</h2>
+      <div class="row">
+        <label for="bankMsb">Bank MSB<br><span class="muted">CC0</span></label>
+        <input type="number" id="bankMsb" min="0" max="127" value="0">
+        <label for="bankLsb">Bank LSB<br><span class="muted">CC32</span></label>
+        <input type="number" id="bankLsb" min="0" max="127" value="0">
+        <label for="prog">Program<br><span class="muted">C0</span></label>
+        <input type="number" id="prog" min="0" max="127" value="0">
+      </div>
+      <div class="row">
+        <button id="btnTimbre" class="primary">发送音色</button>
+        <span class="muted">8 个音色槽，点一下直接切</span>
+      </div>
+      <div class="row">
+        <button class="mini" data-preset="0,0,0">0 · 电钢琴</button>
+        <button class="mini" data-preset="0,0,1">1 · 吉他</button>
+        <button class="mini" data-preset="0,0,2">2 · 管风琴</button>
+        <button class="mini" data-preset="0,0,3">3 · 长笛</button>
+        <button class="mini" data-preset="0,0,4">4 · Pad</button>
+        <button class="mini" data-preset="0,0,5">5 · 铜管</button>
+        <button class="mini" data-preset="0,0,6">6 · 弦乐</button>
+        <button class="mini" data-preset="0,0,7">7 · 拨弦</button>
+      </div>
+      <dl class="kv">
+        <dt>将映射到</dt><dd id="slotOut">timbre_slot = 0</dd>
+      </dl>
+      <div class="note warn"><b>注意：新音起效</b> —— 换音色对正在响的音无效。</div>
+    </section>
+
+    <!-- 表情与滤波 -->
+    <section class="panel" data-fold data-cat="mod">
+      <h2>4 · 表情与滤波（弯音 + CC1/11/71/72/73/74）</h2>
+      <div class="row">
+        <label for="bend" style="min-width:44px">弯音</label>
+        <input type="range" id="bend" min="0" max="16383" value="8192">
+        <input type="number" id="bendNum" min="0" max="16383" value="8192" style="width:76px">
+        <button id="btnBendCenter" class="mini" title="把弯音拉回中心 8192 并发出去">回中</button>
+      </div>
+      <div class="hint" id="bendOut" style="margin-top:-4px">中心 · ±0.00 半音</div>
+
+      <div class="sep"></div>
+      <div id="ccExprRows"></div>
+
+      <div class="sep"></div>
+      <div class="row">
+        <button id="btnSustain" class="mini">踩下延音踏板</button>
+        <span class="muted" id="sustainOut">松开</span>
+      </div>
+
+    </section>
+
+    <!-- 混音与效果器 -->
+
+
+    <!-- 音符 -->
+    <section class="panel" data-fold data-cat="play">
+      <h2>6 · 音符（音调 / 力度 / 和弦齐发）</h2>
+      <div class="row">
+        <label for="note">音符号</label>
+        <input type="number" id="note" min="0" max="127" value="60">
+        <span class="big" id="noteName">C4</span>
+      </div>
+      <div class="row">
+        <label for="freq">频率 Hz</label>
+        <input type="text" id="freq" value="261.626">
+      </div>
+      <div class="row">
+        <button class="mini" data-note="48">C3</button>
+        <button class="mini" data-note="60">C4</button>
+        <button class="mini" data-note="64">E4</button>
+        <button class="mini" data-note="67">G4</button>
+        <button class="mini" data-note="69">A4</button>
+        <button class="mini" data-note="72">C5</button>
+        <button class="mini" data-note="84">C6</button>
+      </div>
+      <div class="sep"></div>
+      <div class="row">
+        <label for="vel">力度 velocity</label>
+        <input type="range" id="vel" min="0" max="127" value="100">
+        <input type="number" id="velNum" min="0" max="127" value="100" style="width:70px">
+      </div>
+
+
+      <div class="sep"></div>
+      <div class="row">
+        <button id="btnOn" class="primary">Note On</button>
+        <button id="btnOff">Note Off</button>
+        <label><input type="checkbox" id="hold" checked> 保持（和弦）</label>
+      </div>
+      <div class="note" id="holdHint"></div>
+      <div class="sep"></div>
+      <div class="row">
+        <span class="muted">和弦齐发</span>
+        <button class="mini" data-chord="4">4 音</button>
+        <button class="mini" data-chord="8">8 音</button>
+        <button class="mini" data-chord="16">16 音</button>
+        <button class="mini" data-chord="32">32 音（复音压测）</button>
+      </div>
+      <div class="note">从当前音符号起向上按半音连续取 N 个音，取消请用「全部 Note Off」键。</div>
+    </section>
+
+    <!-- 按住中的音 -->
+    <section class="panel" data-fold data-cat="play">
+      <h2>7 · 正在发声</h2>
+      <div id="heldEmpty" class="muted">（无）</div>
+      <div style="max-height:26vh;overflow:auto">
+        <table id="heldTable" style="display:none">
+          <thead><tr><th>音名</th><th>note</th><th>通道</th><th>力度</th><th></th></tr></thead>
+          <tbody id="heldBody"></tbody>
+        </table>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="btnAllOff" class="danger">全部 Note Off</button>
+        <span class="muted">逐个发 Note Off（显式，便于在日志里核对字节）</span>
+      </div>
+    </section>
+
+    <!-- 音符序列 -->
+    <section class="panel" data-fold data-cat="play">
+      <h2>8 · 音符序列</h2>
+      <div class="row">
+        <textarea id="seqInput" spellcheck="false" rows="3"
+          placeholder="例：C4 D4 E4:600  60:150  -:200  G4">C4 D4 E4 F4 G4 A4 B4 C5</textarea>
+      </div>
+      <div class="row">
+        <span class="muted">一键填入</span>
+        <button class="mini" data-seq="scale"  title="C4→C5 一个八度：听音高准不准、有没有跳音">音阶</button>
+        <button class="mini" data-seq="chroma" title="12 个半音：最容易听出音准偏差">半音阶</button>
+        <button class="mini" data-seq="sweep"  title="36→96 六个音：上板手册 §2 的音高范围测试">低→高扫</button>
+        <button class="mini" data-seq="arp"    title="C E G C G E 来回：听音程和包络">琶音</button>
+      </div>
+      <div class="row">
+        <label for="seqDur">默认发音时长</label>
+        <input type="number" id="seqDur" min="10" max="60000" value="300" style="width:80px">
+        <span class="muted">ms</span>
+        <label for="seqGap">音间间隔</label>
+        <input type="number" id="seqGap" min="0" max="60000" value="0" style="width:80px">
+        <span class="muted">ms</span>
+      </div>
+      <div class="row">
+        <button id="btnSeqPlay" class="primary">播放</button>
+        <button id="btnSeqStop" disabled>停止</button>
+        <label><input type="checkbox" id="seqLoop"> 循环</label>
+        <button id="btnSeqVelSweep" class="mini"
+          title="同一个音依次用几个力度触发。若听不出音量差异，说明 FPGA 侧没有把力度用起来">力度扫描</button>
+        <span id="seqProgress" class="muted"></span>
+      </div>
+      <div class="note" id="seqStatus"></div>
+      <div class="hint">
+        分隔：空格 / 逗号 / 分号 / 换行。每项写 <b>音名</b>（<code>C4</code>、<code>F#3</code>、<code>Bb5</code>）
+        或 <b>音符号</b>（<code>60</code>）；
+        可加 <code>:时长</code> 单独指定该音发音时长（ms，默认用上面的值），
+        加 <code>@力度</code> 单独指定该音力度（0–127，默认用面板 6 的值）；
+        <code>-</code> 是休止符。<b>全角标点和大写小写都能认。</b><br>
+        例：<code>C4 D4 E4:600 60:150 -:200 G4</code>　　力度扫描：<code>C4@20 C4@60 C4@100 C4@127</code>
+      </div>
+    </section>
+
+    <!-- 手动发送 -->
+    <section class="panel" data-fold data-cat="cmd">
+      <h2>9 · 手动十六进制（逃生舱）</h2>
+      <div class="row">
+        <input type="text" id="rawHex" value="90 3C 64" style="flex:1;width:auto">
+        <button id="btnRaw">发送</button>
+      </div>
+      <div class="hint">十六进制字节，用空格分隔。</div>
+    </section>
+
+    <!-- 指令检查 -->
+    <section class="panel collapsed" data-fold data-cat="cmd">
+      <h2>10 · 指令检查（这条消息 FPGA 会不会执行）</h2>
+      <div class="row">
+        <button id="btnSelfTest" class="primary"
+          title="跑内置的合规/违规用例，逐条核对判定结果与预期是否一致">跑一遍自检</button>
+        <span id="selfTestOut" class="muted">未运行</span>
+      </div>
+      <div class="row">
+        <span class="muted">本次会话</span>
+        <span id="checkSummary" class="pill off">err 0 · warn 0 · info 0</span>
+        <button id="btnClearIssues" class="mini">清空记录</button>
+      </div>
+      <ul id="issueList" style="margin:6px 0 0;padding-left:18px;font-size:12.5px;line-height:1.55"></ul>
+      <div class="note" id="checkNote" style="margin-top:10px">
+        每次发送前都先按<b>固件实际能力</b>查一遍，<b>只提示、不拦截</b> —— 写了什么就发什么（不会出现"点不动"）。<br>
+        判据全部取自 RTL，不看文档转述：<code>midi_filter.v</code>（受支持的 CC 表、
+        乐器口丢弃 CC7/10/91/93/94、An/Dn 落到 default 被忽略）、
+        <code>midi_parse.v</code>（消息长度、运行状态、SysEx 上限 64 字节）、
+        <code>timbre_map.v</code>（<code>timbre_slot = program &amp; 7</code>）。<br>
+        <b>没连串口也能用</b>：只做审计，不写字节 —— 先把要发的东西验一遍再去接板子。
+      </div>
+    </section>
+
+    <!-- 一键演示 -->
+    <section class="panel collapsed" data-fold data-cat="cmd">
+      <h2>11 · 一键演示（整场过一遍）</h2>
+      <div class="row">
+        <button id="btnDemo" class="primary">开始演示</button>
+        <button id="btnDemoStop" disabled>停止</button>
+        <span id="demoStatus" class="muted">未开始</span>
+      </div>
+      <div class="note">
+        顺序：清场 → 32 复音压测 → 8 音色轮听 → CC11 音量扫描 → CC74/CC71 滤波扫描 → 效果器全关/全开对照 → 收尾
+      </div>
+      <div class="note warn" style="margin-top:10px">
+        注意：不支持「32 谱峰」测试，需要重新上电 / 烧录。
+      </div>
+    </section>
+
+    <!-- ADSR 包络 -->
+    <section class="panel collapsed" data-fold data-cat="mod">
+      <h2>12 · ADSR 包络（按 RTL 参数推算）</h2>
+      <div class="row">
+        <span id="envSum" style="font-family:var(--mono);font-size:13px">槽 0 · A – ms · D – ms · S –% · R – ms</span>
+      </div>
+      <div class="hint" id="envHint"></div>
+    </section>
+
+    <!-- 预设 -->
+    <section class="panel" data-fold data-cat="conn">
+      <h2>13 · 预设（把这一屏设置存下来）</h2>
+      <div class="row">
+        <button id="btnPresetSave" class="primary">保存到浏览器</button>
+        <button id="btnPresetLoad">恢复上次保存</button>
+        <button id="btnPresetExport">导出 .json</button>
+        <button id="btnPresetImport">导入 .json</button>
+        <input type="file" id="presetFile" accept=".json,application/json" style="display:none">
+      </div>
+      <div class="hint" id="presetOut">还没保存过</div>
+      <div class="note warn">注意：此处不存串口连接状态。</div>
+    </section>
+
+    <!-- 杂项 -->
+    <section class="panel collapsed" data-fold data-cat="cmd">
+      <h2>14 · 杂项（CC120 断音 / 效果参数 SysEx / 主音量 SysEx）</h2>
+
+      <div class="row">
+        <button id="btnCC120" class="danger">CC120 立即断音</button>
+        <button id="btnCC123">CC123 温和关音</button>
+      </div>
+
+
+      <div class="sep"></div>
+
+      <div class="row">
+        <label for="fxGrp">效果参数</label>
+        <select id="fxGrp">
+          <option value="0">组 0 · 混响</option>
+          <option value="1">组 1 · 合唱</option>
+          <option value="2">组 2 · 延迟</option>
+          <option value="3">组 3 · 主输出</option>
+        </select>
+        <label for="fxIdx">参数号</label>
+        <input type="number" id="fxIdx" min="0" max="15" value="0" style="width:60px">
+        <label for="fxVal">值</label>
+        <input type="number" id="fxVal" min="0" max="16383" value="8192" style="width:84px">
+        <button id="btnSysexFx">发送</button>
+      </div>
+      <div class="hint" id="fxPreview"></div>
+
+      <div class="row" style="margin-top:10px">
+        <label for="masterDev">主音量 设备ID</label>
+        <input type="number" id="masterDev" min="0" max="127" value="127" style="width:60px">
+        <label for="masterVolRange" style="min-width:34px">音量</label>
+        <input type="range" id="masterVolRange" min="0" max="16383" value="16383">
+        <input type="number" id="masterVol" min="0" max="16383" value="16383" style="width:84px">
+        <button id="btnSysexMaster">发送</button>
+      </div>
+      <div class="hint" id="masterPreview"></div>
+
+
+    </section>
+
+    <!-- 混音台 -->
+    <section class="panel collapsed" data-fold data-cat="mix">
+      <h2>15 · 混音台（16 通道 · 点行切换）</h2>
+      <div class="note" id="mxNote"></div>
+      <div class="note" id="mxPortNote"></div>
+      <div class="row" style="margin-bottom:6px">
+        <button id="mxPrev" class="mini">◀ 上一页</button>
+        <span id="mxPage" class="muted">CH1–4</span>
+        <button id="mxNext" class="mini">下一页 ▶</button>
+      </div>
+      <table class="mxTable">
+        <thead><tr>
+          <th>通道</th><th>音色</th><th>音量</th><th>声像</th><th>表情</th><th>混响</th><th>合唱</th><th>延迟</th>
+        </tr></thead>
+        <tbody id="mxBody"></tbody>
+      </table>
+      <div class="sep"></div>
+      <div class="row"><label id="mxCur">当前编辑 CH1</label></div>
+      <div id="mxEdit"></div>
+      <div class="row" style="margin-top:10px">
+        <button id="mxAllVol" class="mini">音量=100</button>
+        <button id="mxAllPan" class="mini">声像居中</button>
+        <button id="mxAllExpr" class="mini">表情=127</button>
+        <button id="mxAllFx" class="mini">效果全关</button>
+        <button id="mxAllFxOn" class="mini">效果全开</button>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<!-- ==================== 日志（固定在底部） ==================== -->
+<div id="logResizer" title="上下拖动，调整日志区高度（双击恢复默认）"></div>
+<section class="panel" id="logPanel">
+  <h2 style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+    <span>发送日志</span>
+    <span class="inline">
+      <button id="btnCopyLog" class="mini">复制全部</button>
+      <button id="btnClearLog" class="mini">清空</button>
+    </span>
+  </h2>
+  <div id="log"></div>
+</section>
+
+<script>
+"use strict";
+
+/* =========================================================================
+   FPGA 合成器 MIDI 发送器
+   - 31250 baud 8N1，单向发送
+   - 消息集：Note On/Off、Bank Select(CC0,CC32) + Program Change、音符序列
+   - 面板 10「指令检查」：发送前按固件实际能力校验（只提示不拦），带自检用例表
+   - 依赖：Web Serial API（Chromium 内核，https 或 localhost）
+   参考文档：documents/MIDI协议.md、documents/硬件实现.md §三
+   校验判据以 rtl/scheduler/*.v 为准（见 CC_SUPPORTED 上方那段注释）
+   ========================================================================= */
+
+const CH_DISCARD_INSTRUMENT = [7, 10, 91, 93, 94];   // 乐器端口会丢弃的混音类 CC
+
+/* ===========================================================================
+   固件能力表 —— 判据全部来自本仓库 RTL，不看文档转述。
+
+   rtl/scheduler/midi_filter.v
+     · cc2field()：受支持的 CC 号与落点；**未列出的号落到 F_NONE 被静默忽略**
+     · is_mix_cc() + m_mixcc_drop：端口 ≠ 2'd3（混音口）时丢弃 CC7 / 10 / 91 / 93 / 94
+     · case(m_type)：只处理 8n / 9n / Bn / Cn / En，An（复音触后）与 Dn（通道触后）
+       落到 default 分支 —— 收下了但什么都不做
+     · 0x8n 的释放力度不进声部（ev_note_vel <= 7'd0），发多少都没意义
+     · CC120 → 立即断音；CC123 → 走 RELEASE；CC101+CC100 之后 CC6 才写弯音范围
+     · SysEx 只认两种：F0 7D …（效果参数，5 个数据字节）、
+                         F0 7F … 04 01 …（主音量，6 个数据字节）
+       并且只看 sxb[0..4]，长度用 sysex_len[2:0]（3 位）—— 超过 7 个数据字节会回绕
+
+   rtl/scheduler/midi_parse.v
+     · 消息长度由状态字节决定（Cn / Dn 只有 1 个数据字节）
+     · **支持运行状态**：通道状态字节替换、System Common/SysEx 清除、F8–FE 就地旁路、FF 复位
+     · SysEx 上限 64 个数据字节；SysEx 字节间超时 10 ms
+     · ⚠ 普通通道消息**没有**字节间超时 —— "字节间隔要够"只对 SysEx 成立
+
+   rtl/scheduler/timbre_map.v   timbre_slot = program[2:0]（Bank 本期不影响音色）
+   rtl/scheduler/chan_table.v   Δsemi = (bend − 8192) / 8192 × bendRange（默认 ±2 半音）
+
+   下面是校验器与自检用例共用的一张表；改这里 = 同时改网页判定和 Node 自检。
+   ========================================================================= */
+
+/* CC 号 → 名称。**只列固件真的会处理的**，别照 MIDI 规范表抄。 */
+const CC_SUPPORTED = Object.freeze({
+  0:'Bank Select MSB', 1:'调制轮', 6:'Data Entry（RPN 用）', 7:'通道音量',
+  10:'声像', 11:'表情', 32:'Bank Select LSB', 64:'延音踏板', 66:'持有踏板',
+  71:'谐振', 72:'释放时间', 73:'起音时间', 74:'截止频率',
+  91:'混响发送', 93:'合唱发送', 94:'延迟发送',
+  100:'RPN LSB', 101:'RPN MSB',
+  120:'All Sound Off（立即断音）', 123:'All Notes Off（走释放）'
+});
+
+const SYSEX_EFFECT_DATA = 5;    // 7D <slot> <param> <hi> <lo>
+const SYSEX_MASTER_DATA = 6;    // 7F <dev> 04 01 <ll> <mm>
+const SYSEX_MAX_DATA    = 64;   // midi_parse.v 的 SYSEX_MAX
+const SYSEX_WRAP_DATA   = 7;    // midi_filter.v 用 sysex_len[2:0]：>7 回绕
+
+/* ---------------- DOM ---------------- */
+const $ = id => document.getElementById(id);
+const el = {
+  support:$('support'), btnConn:$('btnConn'), btnDisconn:$('btnDisconn'), connState:$('connState'),
+  btnProbe:$('btnProbe'), btnPick:$('btnPick'),
+  connHint:$('connHint'), devInfo:$('devInfo'), devDesc:$('devDesc'),
+  baud:$('baud'), baudCustom:$('baudCustom'), baudWarn:$('baudWarn'), baudHint:$('baudHint'),
+  baudErr:$('baudErr'),
+  pmodeNote:$('pmodeNote'), midiCh:$('midiCh'),
+  bankMsb:$('bankMsb'), bankLsb:$('bankLsb'), prog:$('prog'),
+  btnTimbre:$('btnTimbre'), slotOut:$('slotOut'),
+  bend:$('bend'), bendNum:$('bendNum'), bendOut:$('bendOut'), btnBendCenter:$('btnBendCenter'),
+  ccExprRows:$('ccExprRows'),
+  note:$('note'), noteName:$('noteName'), freq:$('freq'),
+  vel:$('vel'), velNum:$('velNum'),
+  btnOn:$('btnOn'), btnOff:$('btnOff'), hold:$('hold'), holdHint:$('holdHint'),
+  heldEmpty:$('heldEmpty'), heldTable:$('heldTable'), heldBody:$('heldBody'), btnAllOff:$('btnAllOff'),
+  catHint:$('catHint'), seqProgress:$('seqProgress'),
+  btnSustain:$('btnSustain'), sustainOut:$('sustainOut'),
+  seqInput:$('seqInput'), seqDur:$('seqDur'), seqGap:$('seqGap'),
+  btnSeqPlay:$('btnSeqPlay'), btnSeqStop:$('btnSeqStop'), seqLoop:$('seqLoop'), seqStatus:$('seqStatus'),
+  btnSeqVelSweep:$('btnSeqVelSweep'),
+  rawHex:$('rawHex'), btnRaw:$('btnRaw'),
+  btnSelfTest:$('btnSelfTest'), selfTestOut:$('selfTestOut'),
+  checkSummary:$('checkSummary'), btnClearIssues:$('btnClearIssues'), issueList:$('issueList'),
+  btnDemo:$('btnDemo'), btnDemoStop:$('btnDemoStop'), demoStatus:$('demoStatus'),
+  envSum:$('envSum'), envHint:$('envHint'),
+  btnPresetSave:$('btnPresetSave'), btnPresetLoad:$('btnPresetLoad'),
+  btnPresetExport:$('btnPresetExport'), btnPresetImport:$('btnPresetImport'), presetFile:$('presetFile'),
+  presetOut:$('presetOut'),
+  btnCC120:$('btnCC120'), btnCC123:$('btnCC123'),
+  fxGrp:$('fxGrp'), fxIdx:$('fxIdx'), fxVal:$('fxVal'), fxPreview:$('fxPreview'),
+  btnSysexFx:$('btnSysexFx'),
+  masterDev:$('masterDev'), masterVol:$('masterVol'), masterPreview:$('masterPreview'),
+  masterVolRange:$('masterVolRange'),
+  btnSysexMaster:$('btnSysexMaster'),
+  log:$('log'), btnClearLog:$('btnClearLog'), btnCopyLog:$('btnCopyLog'),
+  logPanel:$('logPanel'), logResizer:$('logResizer')
+};
+
+/* ---------------- 音高换算 ---------------- */
+const NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const noteName = n => NAMES[((n % 12) + 12) % 12] + (Math.floor(n / 12) - 1);
+const noteToHz = n => 440 * Math.pow(2, (n - 69) / 12);
+const hzToNote = f => 69 + 12 * Math.log2(f / 440);
+
+/* ---------------- MIDI 消息构造（返回字节数组） ---------------- */
+const msgNoteOn  = (ch, n, v) => [0x90 | (ch & 0x0F), n & 0x7F, v & 0x7F];
+const msgNoteOff = (ch, n, v) => [0x80 | (ch & 0x0F), n & 0x7F, v & 0x7F];
+const msgCC      = (ch, c, v) => [0xB0 | (ch & 0x0F), c & 0x7F, v & 0x7F];
+const msgPC      = (ch, p)    => [0xC0 | (ch & 0x0F), p & 0x7F];
+
+/* Pitch Bend：En lo hi —— 14 位、MSB×128+LSB、中心 8192（MIDI协议.md §二）。
+   对着 midi_filter.v 的 `ev_cc_val <= {2'b0, m_val7, m_cc}`：d1 是 MSB、d0 是 LSB。
+   ±半音由 chan_table.v 的 bend_range 决定，默认 ±2，可用 RPN 0,0 改。 */
+const BEND_CENTER = 8192, BEND_MAX = 16383, BEND_RANGE_SEMI = 2;
+const msgBend = (ch, v) => {
+  const x = Math.max(0, Math.min(BEND_MAX, Math.round(Number(v) || 0)));
+  return [0xE0 | (ch & 0x0F), x & 0x7F, (x >> 7) & 0x7F];
+};
+
+/* 把一条消息解成人话（日志用） */
+function describe(bytes){
+  const n = bytes.length;
+  if (n === 0) return '';
+  const st = bytes[0];
+  if (st >= 0x80 && st <= 0xEF){
+    const ch = (st & 0x0F) + 1;
+    const hi = st & 0xF0;
+    if (hi === 0x90 && n >= 3){
+      const note = bytes[1], v = bytes[2];
+      return v === 0
+        ? `Note On 力度0 → 等价 Note Off · 通道${ch} · ${noteName(note)}(${note})`
+        : `Note On  · 通道${ch} · ${noteName(note)}(${note}) · 力度${v} · ${noteToHz(note).toFixed(2)}Hz`;
+    }
+    if (hi === 0x80 && n >= 3)
+      return `Note Off · 通道${ch} · ${noteName(bytes[1])}(${bytes[1]}) · 释放力度${bytes[2]}`;
+    if (hi === 0xB0 && n >= 3){
+      const c = bytes[1], v = bytes[2];
+      let name = `CC${c}`;
+      if (c === 0)  name = 'Bank Select MSB (CC0)';
+      if (c === 32) name = 'Bank Select LSB (CC32)';
+      if (c === 7)  name = '通道音量 (CC7)';
+      if (c === 10) name = '声像 (CC10)';
+      if (c === 11) name = '表情 (CC11)';
+      if (c === 64) name = '延音踏板 (CC64)';
+      if (c === 91) name = '混响发送 (CC91)';
+      if (c === 93) name = '合唱发送 (CC93)';
+      if (c === 94) name = '延迟发送 (CC94)';
+      if (c === 123)name = 'All Notes Off (CC123)';
+      return `Control Change · 通道${ch} · ${name} = ${v}`;
+    }
+    if (hi === 0xC0 && n >= 2)
+      return `Program Change · 通道${ch} · 音色号${bytes[1]}`;
+    if (hi === 0xA0 && n >= 3)
+      return `复音触后 (Poly Key Pressure) · 通道${ch} · ${noteName(bytes[1])}(${bytes[1]}) · 压力${bytes[2]}`;
+    if (hi === 0xD0 && n >= 2)
+      return `通道触后 (Channel Pressure) · 通道${ch} · 压力${bytes[1]}`;
+    if (hi === 0xE0 && n >= 3)
+      return `Pitch Bend · 通道${ch} · 值${(bytes[2] << 7) | bytes[1]}（中心 8192）`;
+    return `通道消息 0x${st.toString(16).toUpperCase()} · 通道${ch}`;
+  }
+  if (st === 0xF0) return 'SysEx 开始';
+  if (st === 0xF7) return 'SysEx 结束 (EOX)';
+  return `系统消息 0x${st.toString(16).toUpperCase()}`;
+}
+
+/* 把字节流切成一条条消息，并**按运行状态补全状态字节**
+   （原来只认"状态字节开头"，手输 `90 3C 64 3E 64` 会被切成 [90 3C 64] [3E] [64]，
+     日志解析全错 —— 而 midi_parse.v 是支持运行状态的）。
+
+   返回 [{ raw, full, status, data, d0, d1, off, orphan }]：
+     raw    —— 线上实际出现的字节（回显 / 逐条发用）
+     full   —— 补上运行状态后的完整消息（喂 describe() 用）
+     data   —— 数据字节（不含状态字节）
+     orphan —— true 表示"没有状态字节也没有运行状态"，固件会丢弃 */
+function parseStream(bytes){
+  const out = [];
+  const push = (raw, status, data, off, orphan) => out.push({
+    raw   : raw,
+    full  : (status === null) ? raw.slice() : [status].concat(data),
+    status: status,
+    data  : data,
+    d0    : data.length > 0 ? data[0] : null,
+    d1    : data.length > 1 ? data[1] : null,
+    off   : off,
+    orphan: !!orphan
+  });
+
+  let run = null;                     // 当前运行状态字节（null = 没有可用状态）
+  let i = 0;
+  while (i < bytes.length){
+    const b = bytes[i];
+
+    if (b >= 0xF8){                   // 实时字节 F8–FE 旁路；FF 是 System Reset，清运行状态
+      if (b === 0xFF) run = null;
+      push([b], b, [], i);
+      i++;
+      continue;
+    }
+    if (b === 0xF0){                  // SysEx：一直吃到 F7（没 F7 就吃到结尾）
+      let j = i + 1;
+      while (j < bytes.length && bytes[j] !== 0xF7) j++;
+      const end    = (j < bytes.length) ? j + 1 : bytes.length;
+      const raw    = bytes.slice(i, end);
+      const hasEnd = raw[raw.length - 1] === 0xF7;
+      push(raw, 0xF0, raw.slice(1, hasEnd ? raw.length - 1 : raw.length), i);
+      run = null;                     // System Common / SysEx 清除运行状态
+      i = end;
+      continue;
+    }
+    if (b >= 0xF1){                   // 其它系统公共消息：F1/F2/F3 带数据，其余单字节
+      const need = (b === 0xF2) ? 3 : ((b === 0xF1 || b === 0xF3) ? 2 : 1);
+      const raw  = bytes.slice(i, Math.min(i + need, bytes.length));
+      push(raw, b, raw.slice(1), i);
+      run = null;
+      i += raw.length;
+      continue;
+    }
+    if (b >= 0x80){                   // 通道状态字节：替换运行状态
+      const hi   = b & 0xF0;
+      const need = (hi === 0xC0 || hi === 0xD0) ? 2 : 3;   // PC / 通道压力只有 1 个数据字节
+      const raw  = bytes.slice(i, Math.min(i + need, bytes.length));
+      push(raw, b, raw.slice(1), i);
+      run = b;
+      i += raw.length;
+      continue;
+    }
+    /* ---- 数据字节 ---- */
+    if (run === null){                // 没有运行状态可续接 → 孤儿，固件直接丢
+      push([b], null, [b], i, true);
+      i++;
+      continue;
+    }
+    const hi   = run & 0xF0;
+    const need = ((hi === 0xC0 || hi === 0xD0) ? 2 : 3) - 1;  // 本条还缺几个数据字节
+    const raw  = bytes.slice(i, Math.min(i + need, bytes.length));
+    push(raw, run, raw.slice(), i);
+    i += raw.length;
+  }
+  return out;
+}
+
+/* 薄包装：只要"线上原始字节"，给逐条发送与既有断言用 */
+function splitMessages(bytes){
+  return parseStream(bytes).map(m => m.raw);
+}
+
+/* ---------------- 指令校验器 ----------------
+   midiCheck(要发的字节, 上下文) → { msgs, issues }
+     issues 里每条 = { off, level:'err'|'warn'|'info', code, text }
+   ctx: { port:'instrument'|'mixer', baud, bendRange, held:Set<note> }
+   **纯函数**：不碰 DOM、不写串口 —— 所以网页和 Node 自测能跑同一份判定。 */
+function midiCheck(bytes, ctx){
+  const c  = Object.assign({ port:'instrument', baud:31250, bendRange:2, held:null }, ctx || {});
+  const msgs = parseStream(bytes);
+  const issues = [];
+  const add = (m, level, code, text) => issues.push({ off: m ? m.off : 0, level: level, code: code, text: text });
+
+  if (Number.isFinite(c.baud) && c.baud !== 31250)
+    add(null, 'err', 'baud',
+      `波特率 ${c.baud}：FPGA 位定时写死 f_clk ÷ 1573 = 31250，别的波特率收到的是乱码（不是"能连上但没反应"，是收不对）。`);
+
+  const notes = new Set(c.held ? Array.from(c.held) : []);
+  let rpnMsb = null, rpnLsb = null, bankSeen = false;
+
+  for (const m of msgs){
+    const st = m.status;
+
+    if (m.orphan){
+      add(m, 'err', 'orphan',
+        '这个数据字节前面没有状态字节、也没有可续接的运行状态 —— 固件会直接丢掉（midi_parse.v：ST_IDLE 且 run_valid=0）。');
+      continue;
+    }
+    if (st === 0xF0){ checkSysExMsg(m, add); continue; }
+    if (st === 0xFF){
+      add(m, 'warn', 'reset', 'System Reset（FF）会清掉运行状态并复位解析器，但不会让正在响的音停下 —— 想停音请用 CC123 / CC120。');
+      continue;
+    }
+    if (st >= 0xF8){
+      add(m, 'info', 'realtime', `实时字节 0x${st.toString(16).toUpperCase()}：解析器就地旁路，对合成没有任何影响。`);
+      continue;
+    }
+    if (st >= 0xF1 && st <= 0xF7){
+      add(m, 'warn', 'syscommon', '系统公共消息（F1–F7）本工程不实现，发了没有反应。');
+      continue;
+    }
+
+    const hi   = st & 0xF0;
+    const need = (hi === 0xC0 || hi === 0xD0) ? 1 : 2;
+    if (m.data.length < need){
+      add(m, 'err', 'incomplete',
+        `这条消息缺数据字节（要 ${need} 个，只有 ${m.data.length} 个）—— 未完成的消息会被丢弃，还可能连带吃掉下一个状态字节。`);
+      continue;
+    }
+
+    if (hi === 0x90){
+      if (m.d1 === 0){
+        add(m, 'info', 'vel0', '力度 0 的 Note On 与 Note Off 同义（midi_filter.v），不会记成"正在发声"。');
+      } else if (notes.has(m.d0)){
+        add(m, 'warn', 'retrigger',
+          `音符号 ${m.d0} 还在响又收到 Note On：同音重触发会再占一个声部（复音 32 里要多算一个）。`);
+      } else {
+        notes.add(m.d0);
+        if (notes.size > 32)
+          add(m, 'warn', 'polyphony',
+            `同时发声 ${notes.size} 个，超过复音上限 32：会触发抢断（STEAL），听得到淡出或断音。`);
+      }
+      continue;
+    }
+    if (hi === 0x80){ notes.delete(m.d0); continue; }
+
+    if (hi === 0xE0){
+      const v    = (m.d1 << 7) | m.d0;
+      const semi = ((v - 8192) / 8192) * c.bendRange;
+      add(m, 'info', 'bend',
+        `Pitch Bend = ${v}（MSB×128+LSB，中心 8192）≈ ${semi >= 0 ? '+' : ''}${semi.toFixed(2)} 半音（范围 ±${c.bendRange}）。`);
+      continue;
+    }
+
+    if (hi === 0xB0){
+      const cc = m.d0, val = m.d1;
+
+      if (CH_DISCARD_INSTRUMENT.includes(cc) && c.port !== 'mixer'){
+        add(m, 'err', 'mix-cc-dropped',
+          `CC${cc}（${CC_SUPPORTED[cc] || '混音类'}）只在混音口(port3)生效；当前是乐器口，midi_filter.v 会把它丢掉 —— 发了等于没发。` +
+          `乐器口想调音量请改用 CC11（表情），它和 CC7 在同一个增益级。`);
+        continue;
+      }
+      if (!(cc in CC_SUPPORTED)){
+        add(m, 'warn', 'unsupported-cc',
+          `CC${cc} 不在固件支持表里（midi_filter.v 的 cc2field 落到 F_NONE）—— 会被静默忽略。` +
+          `支持的是：${Object.keys(CC_SUPPORTED).join(' / ')}。`);
+        continue;
+      }
+      if (cc === 120)
+        add(m, 'warn', 'panic-blast',
+          'CC120 = All Sound Off：立即断音，会硬切当前音（可能听到 click）。想温和收尾请用 CC123（走 RELEASE）。');
+      if (cc === 101) rpnMsb = val;
+      if (cc === 100) rpnLsb = val;
+      if (cc === 6){
+        if (rpnMsb === 0 && rpnLsb === 0)
+          add(m, 'info', 'bend-range', `RPN 0,0 → 弯音范围设为 ±${val} 半音（chan_table.v 的 bend_range）。`);
+        else
+          add(m, 'warn', 'rpn-not-00',
+            `Data Entry(CC6) 前面不是 RPN 0,0（当前 MSB=${rpnMsb}、LSB=${rpnLsb}）—— 本工程只实现 RPN 0,0，这条不生效。`);
+      }
+      if (cc === 0 || cc === 32) bankSeen = true;
+      continue;
+    }
+
+    if (hi === 0xC0){
+      if (!bankSeen)
+        add(m, 'warn', 'pc-without-bank',
+          '单独发 Program Change：本页按规范要求 CC0 → CC32 → Program 连发。缺 Bank Select 时音色未必按预期落地。');
+      add(m, 'info', 'timbre-slot',
+        `音色号 ${m.d0} → timbre_slot = ${m.d0} & 7 = ${m.d0 & 7}` +
+        (m.d0 > 7 ? '（≥8 会回绕，本期只有 8 个槽）' : '') + '。');
+      continue;
+    }
+
+    if (hi === 0xA0)
+      add(m, 'warn', 'ignored-type', '复音触后（An）本工程不实现（midi_filter.v 落到 default）—— 没有作用。');
+    if (hi === 0xD0)
+      add(m, 'warn', 'ignored-type', '通道触后（Dn）本工程不实现 —— 没有作用。');
+  }
+  return { msgs: msgs, issues: issues };
+}
+
+/* SysEx 单独判：固件只认两种格式，且 midi_filter.v 的长度字段只有 3 位 */
+function checkSysExMsg(m, add){
+  const raw  = m.raw;
+  const term = raw[raw.length - 1] === 0xF7;
+  const data = m.data;
+
+  if (!term){
+    add(m, 'err', 'sysex-unterminated',
+      'SysEx 没有 F7 结尾：midi_parse.v 会一直停在 ST_SYSEX 里，10 ms 后超时把整条丢掉。');
+    return;
+  }
+  if (data.length > SYSEX_MAX_DATA){
+    add(m, 'err', 'sysex-too-long',
+      `SysEx 数据 ${data.length} 字节 > ${SYSEX_MAX_DATA}（midi_parse.v 的 SYSEX_MAX）—— 整条丢弃。`);
+    return;
+  }
+  if (data.length > SYSEX_WRAP_DATA){
+    add(m, 'err', 'sysex-wrap',
+      `SysEx 数据 ${data.length} 字节 > ${SYSEX_WRAP_DATA}：midi_filter.v 只用 sysex_len[2:0]（3 位），长度会回绕 8 → 被误解析成别的参数。`);
+    return;
+  }
+
+  const vendor = data[0];
+  if (vendor === 0x7D){
+    if (data.length === SYSEX_EFFECT_DATA)
+      add(m, 'info', 'sysex-fx',
+        `效果参数 SysEx：组 ${data[1] & 3} / 参数 ${data[2] & 15} / 值 ${((data[3] & 0x7F) << 7) | (data[4] & 0x7F)}。`);
+    else
+      add(m, 'warn', 'sysex-fx-len',
+        `效果参数 SysEx 应为 F0 7D <slot> <param> <hi> <lo> F7（${SYSEX_EFFECT_DATA} 个数据字节），实际 ${data.length} 个。`);
+    return;
+  }
+  if (vendor === 0x7F){
+    if (data.length === SYSEX_MASTER_DATA && data[2] === 0x04 && data[3] === 0x01){
+      const v = ((data[5] & 0x7F) << 7) | (data[4] & 0x7F);
+      add(m, 'info', 'sysex-master', `主音量 SysEx：14 位值 ${v}${v === 0 ? '（0 = 静音）' : ''}。`);
+    } else {
+      add(m, 'warn', 'sysex-master-len',
+        `主音量 SysEx 应为 F0 7F <dev> 04 01 <ll> <mm> F7（${SYSEX_MASTER_DATA} 个数据字节），实际 ${data.length} 个或命令字节不对。`);
+    }
+    return;
+  }
+  add(m, 'warn', 'sysex-unknown',
+    `厂商 ID 0x${(vendor === undefined ? 0 : vendor).toString(16).toUpperCase().padStart(2, '0')} 不认识：本工程只实现 0x7D（效果参数）与 0x7F（主音量）。`);
+}
+
+/* ---------------- 自检用例表 ----------------
+   expect: 'clean' = 没有 err/warn（info 允许）｜'info'/'warn'/'err' = 至少出现该级别
+   code  : 可选，要求确实命中某条规则
+   msgs  : 可选，校验 parseStream 切出的条数
+   正例反例各占一半 —— 反例才是重点：这些字节发出去会被丢弃/忽略/出问题。 */
+const SELFTEST_CASES = [
+  /* —— 正例：固件真的会执行 —— */
+  { name:'Note On（乐器口）',            bytes:[0x90,60,100],                        expect:'clean' },
+  { name:'Note Off',                    bytes:[0x80,60,0x40],                       expect:'clean' },
+  { name:'运行状态连发两个音',            bytes:[0x90,60,100,62,100],                 expect:'clean', msgs:2 },
+  { name:'CC11 表情（乐器口的音量）',     bytes:[0xB0,11,100],                        expect:'clean' },
+  { name:'CC7 通道音量（混音口）',        bytes:[0xB0,7,100], ctx:{port:'mixer'},      expect:'clean' },
+  { name:'CC64 延音踏板（文档说没有，其实有）', bytes:[0xB0,64,127],                   expect:'clean' },
+  { name:'CC66 持有踏板',                bytes:[0xB0,66,127],                        expect:'clean' },
+  { name:'音色三连发 CC0→CC32→PC',       bytes:[0xB0,0,0,0xB0,32,0,0xC0,5],          expect:'clean', msgs:3 },
+  { name:'弯音中心 8192',                bytes:[0xE0,0,0x40],                        expect:'clean' },
+  { name:'CC123 全部音符关（走释放）',    bytes:[0xB0,0x7B,0],                        expect:'clean' },
+  { name:'RPN 0,0 → 弯音范围 12 半音',    bytes:[0xB0,0x65,0,0xB0,0x64,0,0xB0,6,12],  expect:'clean' },
+  { name:'效果参数 SysEx（5 数据字节）',  bytes:[0xF0,0x7D,0,1,0,0x40,0xF7],          expect:'clean' },
+  { name:'主音量 SysEx（6 数据字节）',    bytes:[0xF0,0x7F,0x7F,0x04,0x01,0x00,0x40,0xF7], expect:'clean' },
+
+  /* —— 反例：发出去会被丢弃 / 忽略 / 出问题 —— */
+  { name:'乐器口发 CC7 → 被丢弃',         bytes:[0xB0,7,100],  ctx:{port:'instrument'}, expect:'err',  code:'mix-cc-dropped' },
+  { name:'乐器口发 CC91 混响发送 → 被丢弃', bytes:[0xB0,91,64], ctx:{port:'instrument'}, expect:'err',  code:'mix-cc-dropped' },
+  { name:'CC2 呼吸控制器 → 固件忽略',     bytes:[0xB0,2,64],                          expect:'warn', code:'unsupported-cc' },
+  { name:'CC121 复位控制器 → 未实现',     bytes:[0xB0,0x79,0],                        expect:'warn', code:'unsupported-cc' },
+  { name:'CC124 Omni Off → 未实现',       bytes:[0xB0,0x7C,0],                        expect:'warn', code:'unsupported-cc' },
+  { name:'复音触后 An → 忽略',            bytes:[0xA0,60,50],                         expect:'warn', code:'ignored-type' },
+  { name:'通道触后 Dn → 忽略',            bytes:[0xD0,50],                            expect:'warn', code:'ignored-type' },
+  { name:'消息缺数据字节',                bytes:[0x90,60],                            expect:'err',  code:'incomplete' },
+  { name:'孤儿数据字节（无状态/无运行状态）', bytes:[0x3E,0x64],                        expect:'err',  code:'orphan' },
+  { name:'单独发 Program Change（没 Bank）', bytes:[0xC0,5],                          expect:'warn', code:'pc-without-bank' },
+  { name:'CC6 前面不是 RPN 0,0',          bytes:[0xB0,6,12],                          expect:'warn', code:'rpn-not-00' },
+  { name:'SysEx 数据 8 字节（>7 会回绕）', bytes:[0xF0,0x7D,0,1,0,0x40,0,0,0,0xF7],    expect:'err',  code:'sysex-wrap' },
+  { name:'SysEx 没有 F7 结尾',            bytes:[0xF0,0x7D,0,1,0],                    expect:'err',  code:'sysex-unterminated' },
+  { name:'不认识的厂商 SysEx',            bytes:[0xF0,0x7E,0x7F,0x09,0x01,0xF7],      expect:'warn', code:'sysex-unknown' },
+  { name:'波特率不是 31250',              bytes:[0x90,60,100], ctx:{baud:115200},       expect:'err',  code:'baud' },
+  { name:'复音 33 个音 > 上限 32',        bytes:Array.from({length:33}, (_, i) => [0x90, 36 + i, 100]).flat(), expect:'warn', code:'polyphony' },
+  { name:'CC120 硬断（可能 click）',      bytes:[0xB0,0x78,0],                        expect:'warn', code:'panic-blast' }
+];
+
+/* 跑一遍用例表：网页按钮与 test_logic.js 用的是同一张表，判定不会分叉 */
+function runSelfTest(){
+  const fails = [];
+  for (const tc of SELFTEST_CASES){
+    const r      = midiCheck(tc.bytes, tc.ctx || {});
+    const lv     = r.issues.map(x => x.level);
+    const hasErr = lv.indexOf('err')  >= 0;
+    const hasWrn = lv.indexOf('warn') >= 0;
+    const hasInf = lv.indexOf('info') >= 0;
+    let okCase = false;
+    if (tc.expect === 'err')   okCase = hasErr;
+    if (tc.expect === 'warn')  okCase = hasWrn && !hasErr;
+    if (tc.expect === 'info')  okCase = hasInf && !hasErr && !hasWrn;
+    if (tc.expect === 'clean') okCase = !hasErr && !hasWrn;
+    if (okCase && tc.code) okCase = r.issues.some(x => x.code === tc.code);
+    if (okCase && tc.msgs !== undefined) okCase = parseStream(tc.bytes).length === tc.msgs;
+    if (!okCase){
+      fails.push({
+        name: tc.name,
+        expect: tc.expect + (tc.code ? ' / ' + tc.code : ''),
+        got: r.issues.map(x => x.level + '/' + x.code).join(' ') || '（没报任何问题）'
+      });
+    }
+  }
+  return { total: SELFTEST_CASES.length, pass: SELFTEST_CASES.length - fails.length, fails: fails };
+}
+
+function doSelfTest(verbose){
+  const r = runSelfTest();
+  const okAll = r.fails.length === 0;
+  el.selfTestOut.textContent = `${r.pass}/${r.total} 通过`;
+  el.selfTestOut.className   = 'pill ' + (okAll ? 'on' : 'off');
+  el.selfTestOut.title       = okAll ? '每条用例的判定都符合预期'
+                                     : r.fails.map(f => f.name).join('；');
+  if (verbose){
+    logLine([], okAll
+      ? `指令自检通过：${r.pass}/${r.total} 条用例全部符合预期（判据见「10 · 指令检查」）。`
+      : `指令自检失败 ${r.fails.length} 条：` +
+        r.fails.map(f => `${f.name}（期望 ${f.expect}，实为 ${f.got}）`).join('；'),
+      okAll ? 'sys' : 'err');
+  }
+  return r;
+}
+
+/* ---------------- 检查结果的记录与展示 ---------------- */
+const checkStats = { err:0, warn:0, info:0 };
+const issueLog   = [];
+let   lastLogAt  = {};             // "level:code" → 上次写进日志的时刻
+const ISSUE_LOG_GAP_MS = 1500;     // 同一类提示 1.5 s 内只写一行，免得拖滑杆把日志刷爆
+
+/* 校验用的上下文：当前端口 / 波特率 / 已按住的音 */
+function checkCtx(){
+  return {
+    port     : (currentPmode() === 'mixer') ? 'mixer' : 'instrument',
+    baud     : baudInfo().n,
+    bendRange: 2,                                     // chan_table.v 默认 ±2，可用 RPN 0,0 改
+    /* ⚠ 这里**故意不传 held**：页面自己按和弦时是"先发 Note Off 再发 Note On"两笔发送，
+       如果带上 held，第二笔会被误判成"同音重触发"而每次都冒一条警告 —— 假警报比不报更糟。
+       同一个音在同一笔字节里重复按（例如手输 90 3C 64 90 3C 64）仍然会被 in-stream 计数抓到。 */
+    held     : null
+  };
+}
+
+function recordIssues(issues, label){
+  const now = performance.now();
+  for (const it of issues){
+    // 计数永远累加（面板 10 的 err/warn 数字是真的），只是**日志**做限流
+    checkStats[it.level] = (checkStats[it.level] || 0) + 1;
+    issueLog.push(it);
+    if (issueLog.length > 200) issueLog.shift();
+
+    const key  = it.level + ':' + it.code;
+    const last = lastLogAt[key];
+    if (last !== undefined && now - last < ISSUE_LOG_GAP_MS) continue;
+    lastLogAt[key] = now;
+
+    logLine([], `检查 ${it.level.toUpperCase()}：${it.text}` + (label ? `  ← ${label}` : ''),
+            it.level === 'err' ? 'err' : (it.level === 'warn' ? 'warn' : ''));
+  }
+  refreshCheckSummary();
+}
+
+function refreshCheckSummary(){
+  el.checkSummary.textContent = `err ${checkStats.err} · warn ${checkStats.warn} · info ${checkStats.info}`;
+  el.checkSummary.className   = 'pill ' + ((checkStats.err || checkStats.warn) ? 'off' : 'on');
+  el.checkSummary.style.color = checkStats.err ? 'var(--err)' : (checkStats.warn ? 'var(--warn)' : '');
+
+  el.issueList.innerHTML = '';
+  for (const it of issueLog.slice(-10)){
+    const li = document.createElement('li');
+    li.textContent = `[${it.level}] ${it.text}`;
+    li.style.color = it.level === 'err' ? 'var(--err)' : (it.level === 'warn' ? 'var(--warn)' : 'var(--dim)');
+    el.issueList.appendChild(li);
+  }
+}
+
+/* ---------------- 串口 ----------------
+   三个状态变量分工要说清（原来用一个 port 兼表"有对象"和"已连接"，很别扭）：
+     grantedPort —— 用户在浏览器列表里选中过、已获授权的端口对象（未必打开）
+     port        —— 当前**已打开**的端口
+     writer      —— 它的写端
+   分开之后，「串口自检」选中的端口能被「连接串口」直接复用，不用再选一次。 */
+let grantedPort = null, port = null, writer = null;
+const serialOK = ('serial' in navigator);
+
+/* 常见 USB-TTL 芯片的 VID，用来在界面上把设备名显示成人看得懂的样子 */
+const USB_VID_MAP = {
+  0x1A86: '沁恒 CH340 / CH341',
+  0x10C4: 'Silicon Labs CP210x',
+  0x0403: 'FTDI FT232 / FT2232',
+  0x2341: 'Arduino',
+  0x0483: 'STMicro',
+  0x067B: 'Prolific PL2303'
+};
+
+function deviceDesc(){
+  const p = port || grantedPort;
+  if (!p || !p.getInfo) return '未知设备';
+  const info = p.getInfo() || {};
+  const vid = info.usbVendorId, pid = info.usbProductId;
+  if (vid === undefined) return '串口设备（浏览器未提供 USB 信息）';
+  const hex = n => '0x' + n.toString(16).toUpperCase().padStart(4, '0');
+  const name = USB_VID_MAP[vid] || '未知芯片';
+  return `${name}　VID ${hex(vid)}　PID ${hex(pid === undefined ? 0 : pid)}`;
+}
+
+/* 能不能连串口？给出**具体**的拦路原因（每种原因的修法不同） */
+function connBlocker(){
+  if (location.protocol === 'file:')
+    return {
+      level: 'err',
+      html: '<b>你是直接双击 index.html 打开的（<code>file://</code>），浏览器在这种页面下禁用了串口。</b><br>' +
+            '请改用同目录的 <code>start.cmd</code> 启动：双击后它会起一个本地服务并自动打开正确地址。'
+    };
+  if (!window.isSecureContext)
+    return {
+      level: 'err',
+      html: '<b>当前页面不是安全上下文，浏览器禁用了串口。</b><br>' +
+            '必须通过 <code>https</code> 或 <code>http://127.0.0.1:端口/</code> 打开，不能是 <code>file://</code> 或局域网 IP。'
+    };
+  if (!serialOK)
+    return {
+      level: 'err',
+      html: '<b>这个浏览器没有 Web Serial API。</b><br>' +
+            '请换 <b>Chrome</b> 或 <b>Edge</b>（Chromium 内核）。Firefox / Safari 不支持。'
+    };
+  return null;
+}
+
+/* 连接区的自助提示：随「能不能连 / 连没连」变化 */
+function refreshConnHint(){
+  // 环境不满足（file:// / 非安全上下文 / 没 Web Serial）必须常驻红字，否则按钮灰了点不动没人知道为什么
+  const b = connBlocker();
+  if (b){
+    el.connHint.style.display = '';
+    el.connHint.className = 'note ' + b.level;
+    el.connHint.innerHTML = b.html;
+    return;
+  }
+  if (port){
+    el.connHint.style.display = '';
+    el.connHint.className = 'note';
+    el.connHint.innerHTML = '✅ <b>已连接。</b>';
+    return;
+  }
+  // 一切正常但还没连：**不显示操作指引**（那套步骤改成连接失败时写进日志）
+  el.connHint.style.display = 'none';
+  el.connHint.innerHTML = '';
+}
+
+function setConnected(on){
+  el.connState.textContent = on ? '已连接' : '未连接';
+  el.connState.className = 'pill ' + (on ? 'on' : 'off');
+  el.btnConn.disabled = on;
+  el.btnDisconn.disabled = !on;
+  el.devInfo.style.display = (on || grantedPort) ? '' : 'none';
+  if (on || grantedPort) el.devDesc.textContent = deviceDesc() + (on ? '' : '（已选中，未连接）');
+  refreshConnHint();
+  refreshHeld();          // 面板 7 的「未连接：只是预览」提示要跟着连接状态变
+}
+
+/* 弹出浏览器的串口列表让用户选一个设备（已授权的会被记下来复用）。
+   ⚠ 这里**不能**加 connecting 守卫：connect() 内部会调它，而 connect() 自己
+     已经把 connecting 置 true 了 —— 加了守卫就会第一次点「连接串口」就被自己挡掉。
+     带守卫的入口是下面的 pickPort()（给「更换设备」按钮用）。 */
+async function requestPortFromUser(){
+  const b = connBlocker();
+  if (b){ logLine([], '无法选择串口：' + b.html.replace(/<[^>]+>/g, ''), 'err'); return null; }
+  try{
+    grantedPort = await navigator.serial.requestPort();
+    logLine([], '已选择设备：' + deviceDesc(), 'sys');
+    setConnected(false);
+    return grantedPort;
+  }catch(e){
+    const name = (e && e.name) || '';
+    logLine([], name === 'NotFoundError'
+      ? '已取消：没有在列表里选中任何设备。'
+      : `选择设备失败：${name || '(无名)'} · ${(e && e.message) || e}`, 'err');
+    return null;
+  }
+}
+
+/* 「更换设备」按钮：可以拒绝正在进行的连接，并先断开旧的连接 */
+async function pickPort(){
+  if (connecting){ logLine([], '正在连接中，请稍候再换设备。', 'sys'); return null; }
+  if (writer){
+    logLine([], '更换设备前先断开当前连接。', 'sys');
+    await disconnect();
+  }
+  return requestPortFromUser();
+}
+
+let connecting = false;      // 防重入：连点「连接串口」会叠出两个浏览器对话框
+
+async function connect(){
+  const b = connBlocker();
+  if (b){ logLine([], '无法连接：' + b.html.replace(/<[^>]+>/g, ''), 'err'); return; }
+  if (connecting){ logLine([], '上一次连接还在进行中（浏览器对话框可能被挡在后面），请稍候。', 'sys'); return; }
+
+  const bi = baudInfo();
+  if (!bi.ok){
+    logLine([], `波特率无效（"${bi.raw}"），请输入 ${BAUD_MIN}–${BAUD_MAX} 的整数。已取消连接。`, 'err');
+    refreshBaudHint();
+    return;
+  }
+
+  connecting = true;
+  try{
+    // 已经选过设备就直接复用，不再弹列表（否则「自检」完还得重选一次）
+    let p = grantedPort;
+    if (!p) p = await requestPortFromUser();   // ⚠ 这一句才弹浏览器的原生串口选择框
+    if (!p) return;
+
+    port = p;
+    await port.open({
+      baudRate: bi.n,
+      dataBits: 8, stopBits: 1, parity: 'none', flowControl: 'none', bufferSize: 4096
+    });
+    writer = port.writable.getWriter();
+    setConnected(true);
+    logLine([], `已连接串口 · ${deviceDesc()} · ${bi.n} baud · 8N1`, 'sys');
+  }catch(e){
+    // 分别给出可操作的提示，而不是甩一句英文异常。
+    // ⚠ 同时把**原始异常名和消息**打进日志 —— 只有拿到它才能准确定位，不要靠猜。
+    const name = (e && e.name) || '';
+    const raw  = (e && e.message) ? e.message : String(e);
+    let msg;
+    if (name === 'NotFoundError')
+      msg = '已取消：你没有在浏览器的串口列表里选中任何设备（重来一次即可）。';
+    else if (name === 'SecurityError')
+      msg = '被浏览器安全策略拦下：请确认是通过 http://127.0.0.1:端口/ 打开的，而不是 file://。';
+    else if (name === 'InvalidStateError')
+      msg = '这个串口已经被打开了：可能另一个浏览器标签页或别处正开着它。';
+    else if (name === 'NetworkError')
+      msg = '操作系统拒绝打开这个串口（NetworkError）。原因按可能性排序：\n' +
+            '        ① 这个口正被别的程序占用（串口助手 / Arduino IDE / PuTTY / 另一个浏览器标签页）\n' +
+            '        ② 你选的不是真的 USB-TTL，而是虚拟串口（例如「蓝牙链接上的标准串行」）\n' +
+            '        ③ 驱动不接受 31250 这个非标准波特率\n' +
+            '        ④ 设备已拔出 / 驱动异常\n' +
+            '        ▶ 点「串口自检」可以区分 ②③④：它会把几个波特率都试一遍。';
+    else
+      msg = '连接失败：' + raw;
+    logLine([], msg, 'err');
+    logLine([], `原始异常：${name || '(无名)'} · ${raw}`, 'err');
+    // 操作指引放在**失败时**才写进日志（平时不占界面）
+    if (name === 'NotFoundError' || name === 'NetworkError')
+      logLine([], '怎么连：点「连接串口」→ 浏览器弹出串口列表 → 选中你的 USB-TTL（名字类似 ' +
+                  'USB-SERIAL CH340 / CP210x）→ 点那个框里的「连接 / Connect」。' +
+                  '列表里是空的，说明 USB-TTL 没插好、驱动没装，或被别的串口助手占用。', 'sys');
+    // 失败后把端口对象收干净，避免下次 open 受上次残留状态影响
+    try { if (port && port.close) await port.close(); } catch (_) { }
+    port = null; writer = null; setConnected(false);
+  } finally {
+    connecting = false;
+  }
+}
+
+async function disconnect(){
+  try{
+    if (writer){ writer.releaseLock(); writer = null; }
+    if (port){ await port.close(); port = null; }
+    logLine([], '已断开串口', 'sys');
+  }catch(e){
+    logLine([], '断开时出错：' + (e && e.message ? e.message : e), 'err');
+  }
+  setConnected(false);
+}
+
+/* ---------------- 串口自检 ----------------
+   依次用几个波特率打开所选串口，用来区分三件完全不同的事：
+     · 31250 能开            → 串口没问题
+     · 只有 31250 开不了     → 驱动不接受这个非标准波特率（换转换器）
+     · 所有波特率都开不了    → 不是波特率的事（被占用 / 虚拟口 / 驱动异常 / 设备坏）
+   这条诊断就是为了避免"打不开串口"时只能靠猜。 */
+async function probePort(){
+  const b = connBlocker();
+  if (b){ logLine([], '无法自检：当前环境连不了串口（原因见「1 · 串口连接」的红字）。', 'err'); return; }
+  if (el.btnProbe.disabled) return;          // 防重入：连点会在同一个口上跑两次探测
+
+  el.btnProbe.disabled = true;
+  try {
+    if (writer){                                   // 正连着就先断开，否则 open 必然失败
+      logLine([], '自检前先断开当前连接。', 'sys');
+      await disconnect();
+    }
+
+    let p = grantedPort;
+    if (!p){
+      p = await pickPort();                    // 复用同一个选择流程，选完会被记住
+      if (!p){ logLine([], '已取消自检。', 'sys'); return; }
+    }
+    const rates = [31250, 115200, 9600];
+    const result = {};
+    logLine([], `开始串口自检：依次尝试 ${rates.join(' / ')} baud …（每一步都会开了立刻关）`, 'sys');
+
+    for (const r of rates){
+      let ok = false, why = '';
+      try{
+        await p.open({ baudRate: r, dataBits: 8, stopBits: 1, parity: 'none', flowControl: 'none', bufferSize: 4096 });
+        ok = true;
+        try { await p.close(); } catch(_){}
+      }catch(e){
+        why = ((e && e.name) ? e.name : '?') + ((e && e.message) ? ': ' + e.message : '');
+        try { await p.close(); } catch(_){}
+      }
+      result[r] = ok;
+      logLine([], ok ? `  ✓ ${r} baud 打开成功` : `  ✗ ${r} baud 打不开 → ${why}`, ok ? '' : 'err');
+    }
+
+    logLine([], '—— 自检结论 ——', 'sys');
+    const anyOther = rates.some(r => r !== 31250 && result[r]);
+    if (result[31250]){
+      logLine([], '31250 能正常打开，串口本身没问题。直接点「连接串口」即可。', 'sys');
+    }else if (anyOther){
+      logLine([], '别的波特率能开、只有 31250 开不了 → 你的 USB-TTL 驱动不接受 31250 这个非标准波特率。', 'err');
+      logLine([], '31250 是硬性要求（FPGA 位定时固定 = f_clk÷1573），不能改。换一个转换器：FT232 / CH340 一般可以，CP2102 与部分 PL2303 要看驱动版本。', 'err');
+    }else{
+      logLine([], '所有波特率都打不开 → 与波特率无关。依次检查：', 'err');
+      logLine([], '  ① 这个口是否被别的程序占用（串口助手 / Arduino IDE / PuTTY / 另一个标签页）', 'err');
+      logLine([], '  ② 你选的是不是虚拟串口（如「蓝牙链接上的标准串行」），而不是真的 USB-TTL', 'err');
+      logLine([], '  ③ 设备管理器里该设备有没有黄色感叹号、驱动装没装', 'err');
+      logLine([], '  ④ USB-TTL 是否插稳 / 是否已损坏', 'err');
+    }
+  } finally {
+    el.btnProbe.disabled = false;
+  }
+}
+
+// ⚠ 这两个绑定曾经漏掉过：函数写好了但没接上线，点按钮毫无反应。
+//   现在由 test_logic.js 的「每个带 id 的 button 都必须有 click 监听」守着。
+el.btnConn.addEventListener('click', connect);
+el.btnDisconn.addEventListener('click', disconnect);
+el.btnProbe.addEventListener('click', probePort);
+el.btnPick.addEventListener('click', pickPort);
+
+/* 发送一串字节（bytes 可含多条消息，按顺序原样发出）。
+   返回 true/false 表示是否真的写进了串口 —— 调用方据此决定要不要改自己的状态，
+   否则会出现「界面说松开了、其实字节没发出去」这种状态与事实不符。 */
+/* 混音台同步钩子：混音台定义在后面的 IIFE 里，send 看不到它的变量，
+   所以由混音台初始化时注入。任何来源的 CC / Program Change 都经过 send，
+   在这里统一解析 → 面板 3 换音色、面板 4 拖表情、预设恢复、一键演示都能同步到混音台。 */
+let mixerSyncHook = null;
+
+async function send(bytes, label){
+  // 先查再发：连不上串口时也照样查（离线审计）——
+  // 没有板子也能先确认"要发的东西对不对"，这正是这个校验器存在的意义。
+  recordIssues(midiCheck(bytes, checkCtx()).issues, label);
+  if (mixerSyncHook) mixerSyncHook(bytes);
+
+  const extra = label ? `  ← ${label}` : '';
+  if (!writer){
+    logLine(bytes, '未连接串口，仅记录未发送' + extra, 'err');
+    return false;
+  }
+  try{
+    await writer.write(new Uint8Array(bytes));
+    // 一次发多条时（如选音色的 CC0+CC32+PC），日志逐条解析，便于核对字节。
+    // ⚠ 用 m.full 而不是 m.raw：运行状态的消息本身不带状态字节，直接喂 describe() 会解析错。
+    const desc = parseStream(bytes).map(m => describe(m.full)).filter(Boolean).join('  |  ');
+    logLine(bytes, desc + extra);
+    return true;
+  }catch(e){
+    logLine(bytes, '发送失败：' + (e && e.message ? e.message : e), 'err');
+    return false;
+  }
+}
+
+/* ---------------- 日志 ---------------- */
+function hexStr(bytes){
+  return bytes.map(b => b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
+}
+function logLine(bytes, text, cls){
+  // ⚠ 先判断用户是不是正停在底部：调试时经常要往回翻看，
+  //   每来一条新日志就把视口拽回底部会让人根本读不了。
+  const atBottom = el.log.scrollTop + el.log.clientHeight >= el.log.scrollHeight - 8;
+
+  const d = new Date();
+  const t = d.toTimeString().slice(0,8) + '.' + String(d.getMilliseconds()).padStart(3,'0');
+  const line = document.createElement('span');
+  line.className = 'le' + (cls ? ' ' + cls : '');
+  if (bytes && bytes.length){
+    const hx = span('hx', hexStr(bytes));
+    line.appendChild(span('t', t + '  '));
+    line.appendChild(hx);
+    line.appendChild(span('tx', (hx.textContent.length < 12 ? '\t' : '  ') + text));
+  }else{
+    line.appendChild(span('t', t + '  '));
+    line.appendChild(span('tx', text));
+  }
+  el.log.appendChild(line);
+  if (atBottom) el.log.scrollTop = el.log.scrollHeight;
+}
+function span(cls, txt){ const s = document.createElement('span'); s.className = cls; s.textContent = txt; return s; }
+
+/* ---------------- 波特率 ---------------- */
+const BAUD_MIN = 300, BAUD_MAX = 3000000;
+
+/* ⚠ 必须校验：自定义档位下用户可以输入空串 / 字母 / 超范围值。
+   不挡掉的话会以 NaN 或 0 去调 port.open()，浏览器抛的错完全看不懂。 */
+function baudInfo(){
+  const raw = String((el.baud.value === 'custom') ? el.baudCustom.value : el.baud.value);
+  const n = Number(raw);
+  const ok = raw.trim() !== '' && Number.isFinite(n) && Number.isInteger(n)
+             && n >= BAUD_MIN && n <= BAUD_MAX;
+  return { raw: raw, n: n, ok: ok };
+}
+/* 注：曾有一个 currentBaud() 便利包装，在 connect() 改用 baudInfo() 之后
+   就没有任何调用点了 —— 被 test_logic.js 的「死代码检查」抓到，已删除。
+   需要波特率数值时直接用 baudInfo().n。 */
+
+function refreshBaudHint(){
+  const b = baudInfo();
+
+  if (!b.ok){
+    el.baudErr.style.display = '';
+    el.baudErr.textContent = `⚠ 波特率无效（你填的是 "${b.raw}"）：请输入 ${BAUD_MIN}–${BAUD_MAX} 之间的整数。`;
+    el.baudHint.style.display = 'none';
+    el.baudWarn.textContent = '无效，无法连接';
+    el.baudWarn.style.color = 'var(--err)';
+    return;
+  }
+  el.baudErr.style.display = 'none';
+
+  const bad = (b.n !== 31250);
+  el.baudHint.style.display = bad ? '' : 'none';
+  el.baudWarn.textContent = bad ? '≠ 31250，FPGA 收不到' : '';
+  el.baudWarn.style.color = bad ? 'var(--warn)' : '';
+}
+el.baud.addEventListener('change', () => {
+  el.baudCustom.style.display = el.baud.value === 'custom' ? '' : 'none';
+  refreshBaudHint();
+});
+el.baudCustom.addEventListener('input', refreshBaudHint);
+
+/* ---------------- 端口模式 ---------------- */
+function currentPmode(){
+  return document.querySelector('input[name=pmode]:checked').value;
+}
+function refreshPmodeNote(){
+  if (currentPmode() === 'instrument'){
+    el.pmodeNote.className = 'note warn';
+    el.pmodeNote.innerHTML =
+      `<b>乐器端口</b>：混音类 CC <code>${CH_DISCARD_INSTRUMENT.join(' / ')}</code> 会被主动丢弃。`;
+  }else{
+    el.pmodeNote.className = 'note';
+    el.pmodeNote.innerHTML =
+      `<b>混音器端口</b>：全部消息都进混音 / 控制路径，不做丢弃。`;
+  }
+
+  // 面板 15 混音台：乐器口上这 5 个 CC 反正会被丢弃，别让人白拖
+  const inst = (currentPmode() === 'instrument');
+  const mxNote = document.getElementById('mxPortNote');
+  if (mxNote){
+    mxNote.className = 'note' + (inst ? ' warn' : '');
+    mxNote.innerHTML = inst
+      ? '⚠ <b>当前为乐器端口</b>：音量 / 声像 / 混响 / 合唱 / 延迟 会被 FPGA 丢弃，已禁用。<br>' +
+        '切到 <b>混音器端口</b> 才能用（表情 CC11 不受影响，仍可用）。'
+      : '✓ <b>混音器端口</b>：6 个参数全部生效。';
+  }
+  setMxMixEnabled(!inst);
+}
+
+document.querySelectorAll('input[name=pmode]').forEach(r => r.addEventListener('change', refreshPmodeNote));
+
+/* 面板 15 混音台的控件表。定义在全局：refreshPmodeNote（全局）要在乐器口上禁用这组控件，
+   而 mxBuildEdit 在 IIFE 里、只负责往里填。所以表放在这里，两边都能看见。 */
+const mxCtl = {};
+const MX_MIX_ONLY = ['vol', 'pan', 'rev', 'cho', 'del'];
+
+function setMxMixEnabled(enabled){
+  for (const k of MX_MIX_ONLY){
+    const c = mxCtl[k];
+    if (!c) continue;
+    if (c.rg) c.rg.disabled = !enabled;
+    if (c.nm) c.nm.disabled = !enabled;
+  }
+  for (const id of ['mxAllVol', 'mxAllPan', 'mxAllFx', 'mxAllFxOn']){
+    const b = document.getElementById(id);
+    if (b) b.disabled = !enabled;
+  }
+  if (mxCtl.panBtn) mxCtl.panBtn.disabled = !enabled;
+}
+
+/* ---------------- 音色 ---------------- */
+/* 全局唯一的 MIDI 通道（界面 1–16 → 线上 0–15）。
+   ⚠ 原来音色面板和音符面板各有一个独立的「通道」输入框，改一个不影响另一个 ——
+     名字都叫「通道」，极易搞出「音色发到 ch1、音符发到 ch3」这种假故障。
+     现已合并为这一个（见 test_logic.js 里对 chTimbre/chNote 已消失的断言）。 */
+function currentChannel(){
+  return clampInt(el.midiCh.value, 1, 16, 1) - 1;
+}
+
+/* 力度（velocity）统一从这里取。
+   滑杆 #vel 与数字框 #velNum 由 syncVel() 保持同步，真正的数据源是数字框。 */
+function currentVelocity(){
+  return clampInt(el.velNum.value, 0, 127, 100);
+}
+
+/* 8 个音色槽的名字 —— 唯一真相源，按钮文案和演示流程都从这里取。
+   来源：《上板测试指令手册》§3（2026-10-21 上板实测口径）：
+     槽 0–3 = 真实采样（电钢琴 / 吉他 / 管风琴 / 长笛）
+     槽 4–7 = Pad / 铜管 / 弦乐 / 拨弦（2026-10-28 定名，见 develop/scratch/音色参数表.md）
+   ⚠ full_system.v 的 tp_of 注释里写着「正弦 / 锯齿 / 三角」，那是换采样**之前**的描述，已过时；
+     那份注释只对 ADSR/滤波器参数有效，不要拿它当音色名。 */
+const TIMBRE_NAMES = ['电钢琴', '吉他', '管风琴', '长笛', 'Pad', '铜管', '弦乐', '拨弦'];
+
+function refreshSlot(){
+  const p = clampInt(el.prog.value, 0, 127, 0);
+  el.slotOut.textContent = `timbre_slot = ${p & 7}（${TIMBRE_NAMES[p & 7]}）` +
+                           `   program ${p} & 7，本期恒等映射` +
+                           (p > 7 ? '　⚠ ≥8 会回绕到上面的槽' : '');
+  // 8 个音色按钮里，只有 prog 完全对得上的那个高亮（手填 8 时全不高亮）
+  document.querySelectorAll('[data-preset]').forEach(b => {
+    const bp = Number(String(b.dataset.preset || '').split(',')[2]);
+    b.className = 'mini' + (bp === p ? ' on' : '');
+  });
+}
+async function sendTimbre(){
+  const ch = currentChannel();
+  const msb = clampInt(el.bankMsb.value, 0, 127, 0);
+  const lsb = clampInt(el.bankLsb.value, 0, 127, 0);
+  const pg  = clampInt(el.prog.value, 0, 127, 0);
+  // ⚠ 顺序固定 CC0 → CC32 → Program Change，中间不能插入其他消息
+  const bytes = [...msgCC(ch, 0, msb), ...msgCC(ch, 32, lsb), ...msgPC(ch, pg)];
+  await send(bytes, `选音色 bank(${msb},${lsb}) prog${pg} · ${TIMBRE_NAMES[pg & 7]}` +
+                    ` → timbre_slot ${pg & 7}`);
+}
+el.btnTimbre.addEventListener('click', sendTimbre);
+document.querySelectorAll('[data-preset]').forEach(b => b.addEventListener('click', async () => {
+  const [m, l, p] = b.dataset.preset.split(',').map(Number);
+  el.bankMsb.value = m; el.bankLsb.value = l; el.prog.value = p;
+  refreshSlot();
+  renderEnv();                 // 面板 13 的包络跟着音色槽变
+  // 点一下就直接发出去，省掉"再点一次发送音色"。没连串口时只记录、不报错。
+  await sendTimbre();
+}));
+el.prog.addEventListener('input', () => { refreshSlot(); renderEnv(); });
+
+/* ---------------- 音符号 / 频率 双向换算 ---------------- */
+el.note.addEventListener('input', () => {
+  const n = clampInt(el.note.value, 0, 127, 60);
+  el.noteName.textContent = noteName(n);
+  el.freq.value = noteToHz(n).toFixed(3);
+});
+el.freq.addEventListener('input', () => {
+  const f = parseFloat(el.freq.value);
+  if (!isFinite(f) || f <= 0) return;
+  const n = Math.round(hzToNote(f));
+  const nc = Math.max(0, Math.min(127, n));
+  el.note.value = nc;
+  el.noteName.textContent = noteName(nc);
+  el.freq.title = (nc !== n) ? `已夹到音符号范围 0–127（原值 ${n}）` : '';
+});
+document.querySelectorAll('[data-note]').forEach(b => b.addEventListener('click', () => {
+  el.note.value = b.dataset.note;
+  el.note.dispatchEvent(new Event('input'));
+}));
+
+/* ---------------- 力度 ---------------- */
+function syncVel(from){
+  let v = clampInt(from === 'num' ? el.velNum.value : el.vel.value, 0, 127, 100);
+  el.vel.value = v; el.velNum.value = v;
+}
+el.vel.addEventListener('input', () => syncVel('range'));
+el.velNum.addEventListener('input', () => syncVel('num'));
+
+/* ⚠ MIDI 的力度**只在 Note On 那一刻生效**，正在响的音不会因为拖滑杆而变响。
+   对调试器来说这很容易被误解成"滑杆没功能"，所以拖完（change 而非 input）时，
+   如果还有音按着，就用新力度把它们重新触发一遍，让变化立刻听得见。 */
+async function retriggerHeldForVelocity(){
+  if (!held.size) return;
+  if (seqPlaying) return;                    // 序列播放中不插手，免得打乱它的时间轴
+  const vel = currentVelocity();
+  logLine([], `力度改为 ${vel}：重新触发 ${held.size} 个按住的音（MIDI 力度只在 Note On 时生效）。`, 'sys');
+  for (const h of [...held.values()]){
+    await send(msgNoteOff(h.ch, h.note, RELEASE_VEL), '');
+    h.vel = vel;
+    await send(msgNoteOn(h.ch, h.note, vel), `重新触发 ${noteName(h.note)} · 力度${vel}`);
+  }
+  refreshHeld();
+}
+el.vel.addEventListener('change', retriggerHeldForVelocity);
+el.velNum.addEventListener('change', retriggerHeldForVelocity);
+
+/* ---------------- 节流器（拖动类控件共用） ----------------
+   拖滑杆会连续产生 input 事件，而 31250 baud 下一条 3 字节消息要 ~1 ms，
+   不节流会把日志和串口一起淹没。做法：只保留最后一个值，40 ms 内最多发一条，
+   松手（change）时补发最终值。 */
+const CC_THROTTLE_MS = 40;
+
+function makeThrottle(ms, fire){
+  let timer = null, lastAt = 0, pending = null;
+
+  function flush(){
+    if (timer !== null){ clearTimeout(timer); timer = null; }
+    if (pending === null) return;
+    const v = pending;
+    pending = null;
+    lastAt = performance.now();
+    fire(v);
+  }
+  return {
+    push(v){
+      pending = v;
+      const wait = ms - (performance.now() - lastAt);
+      if (wait <= 0) flush();
+      else if (timer === null) timer = setTimeout(flush, wait);
+    },
+    flushNow(){ flush(); },
+    cancel(){ if (timer !== null){ clearTimeout(timer); timer = null; } pending = null; }
+  };
+}
+
+/* ---------------- 弯音（面板 4） ---------------- */
+function bendSemiText(v){
+  const s = ((v - BEND_CENTER) / BEND_CENTER) * BEND_RANGE_SEMI;
+  return `${s >= 0 ? '+' : ''}${s.toFixed(2)} 半音`;
+}
+function syncBend(from){
+  const v = clampInt(from === 'num' ? el.bendNum.value : el.bend.value, 0, BEND_MAX, BEND_CENTER);
+  el.bend.value = v;
+  el.bendNum.value = v;
+  el.bendOut.textContent = (v === BEND_CENTER)
+    ? `中心 · ${bendSemiText(v)}`
+    : `偏移 ${v > BEND_CENTER ? '+' : ''}${v - BEND_CENTER}（值 ${v}）· ${bendSemiText(v)}`;
+  return v;
+}
+const bendThrottle = makeThrottle(CC_THROTTLE_MS, v => {
+  send(msgBend(currentChannel(), v), `弯音 ${v} · ${bendSemiText(v)}`);
+});
+
+el.bend.addEventListener('input', () => bendThrottle.push(syncBend('range')));
+el.bend.addEventListener('change', () => { syncBend('range'); bendThrottle.flushNow(); });
+el.bendNum.addEventListener('input', () => bendThrottle.push(syncBend('num')));
+el.bendNum.addEventListener('change', () => { syncBend('num'); bendThrottle.flushNow(); });
+el.btnBendCenter.addEventListener('click', async () => {
+  bendThrottle.cancel();              // 别让还在路上的旧值把"回中"盖掉
+  el.bend.value = BEND_CENTER;
+  el.bendNum.value = BEND_CENTER;
+  syncBend('range');
+  await send(msgBend(currentChannel(), BEND_CENTER), '弯音回中（8192 = 不弯）');
+});
+
+/* ---------------- CC 滑杆（面板 4 / 5 共用同一套生成逻辑） ----------------
+   每行 = 标签 + 滑杆 + 数字框 + 说明。拖动走节流，松手补发最终值。 */
+const CC_ROWS_EXPR = [
+  { cc: 1,  name: '调制轮',  def: 0,   note: '→ 颤音深度' },
+  { cc: 11, name: '表情',    def: 127, note: '乐器口上就靠它调音量' },
+  { cc: 74, name: '截止',    def: 64,  note: '越大越亮' },
+  { cc: 71, name: '谐振',    def: 64,  note: '越大越尖' },
+  { cc: 73, name: '起音',    def: 64,  note: '越大越慢' },
+  { cc: 72, name: '释放',    def: 64,  note: '越大越长' }
+];
+
+/* 同一时刻只可能拖一个滑杆，所以整个页面共用一个节流器 */
+const ccThrottle = makeThrottle(CC_THROTTLE_MS, p => {
+  send(msgCC(currentChannel(), p.cc, p.val), `CC${p.cc} ${p.name} = ${p.val}`);
+});
+/* cc → { set(v), get() }：供「效果全关/全开」同步界面、预设存取、以及 ADSR 图读当前 CC73/CC72 */
+const ccCtls = new Map();
+
+function buildCcRows(host, rows){
+  host.innerHTML = '';
+  for (const r of rows){
+    const row = document.createElement('div');
+    row.className = 'row';
+
+    const lb = document.createElement('label');
+    lb.style.minWidth = '92px';
+    lb.textContent = `CC${r.cc} ${r.name}`;
+
+    const rg = document.createElement('input');
+    rg.type = 'range'; rg.min = '0'; rg.max = '127'; rg.value = String(r.def);
+
+    const nm = document.createElement('input');
+    nm.type = 'number'; nm.min = '0'; nm.max = '127'; nm.value = String(r.def);
+    nm.style.width = '62px';
+
+    const tip = document.createElement('span');
+    tip.className = 'muted';
+    tip.textContent = r.note;
+
+    const set  = v => { rg.value = v; nm.value = v; };
+    const drag = () => {
+      const v = clampInt(rg.value, 0, 127, r.def);
+      set(v);
+      ccThrottle.push({ cc: r.cc, val: v, name: r.name });
+      refreshEnvIfNeeded(r.cc);
+    };
+    const type = () => {
+      const v = clampInt(nm.value, 0, 127, r.def);
+      set(v);
+      ccThrottle.push({ cc: r.cc, val: v, name: r.name });
+      refreshEnvIfNeeded(r.cc);
+    };
+    rg.addEventListener('input', drag);
+    rg.addEventListener('change', () => ccThrottle.flushNow());
+    nm.addEventListener('input', type);
+    nm.addEventListener('change', () => ccThrottle.flushNow());
+
+    ccCtls.set(r.cc, { set: set, get: () => clampInt(rg.value, 0, 127, r.def) });
+
+    // 声像加一个「居中」：CC10=64 是正中间，拖回去很难精确对到 64
+    const extras = [];
+    if (r.cc === 10){
+      const bt = document.createElement('button');
+      bt.className = 'mini';
+      bt.textContent = '居中';
+      bt.title = '声像回到正中间（CC10 = 64）';
+      bt.addEventListener('click', () => {
+        set(64);
+        ccThrottle.cancel();          // 别让还在路上的拖动值把 64 盖掉
+        send(msgCC(currentChannel(), 10, 64), 'CC10 声像居中（64）');
+      });
+      extras.push(bt);
+    }
+
+
+    row.appendChild(lb); row.appendChild(rg); row.appendChild(nm); row.appendChild(tip);
+    for (const x of extras) row.appendChild(x);
+    host.appendChild(row);
+  }
+}
+
+
+/* ---------------- 延音踏板（CC64，面板 4） ----------------
+   固件链路（逐级查过）：
+     midi_filter.v  cc2field(64)=F_SUSTAIN → chan_table.sustain_pedal
+     → chan_param_shadow → voice_fetch（按声部通道号选）→ voice_mono → adsr_vca
+   adsr_vca 的状态机：SUSTAIN 里松键时若踏板踩着 → 进 PENDING_RELEASE（保持不释放），
+   踏板一松才进 RELEASE；PENDING_RELEASE 期间再按键还能回 SUSTAIN。所以是真踏板。
+   ⚠ CC66（sostenuto）固件存了字段但没接到声部层（sched_subsystem 里进了 _unused），
+     发出去没效果，所以这里不提供。 */
+let sustainOn = false;
+
+function setSustainUI(on){
+  sustainOn = !!on;
+  el.btnSustain.textContent = sustainOn ? '松开延音踏板' : '踩下延音踏板';
+  el.btnSustain.className   = sustainOn ? 'mini on' : 'mini';
+  el.sustainOut.textContent = sustainOn ? '● 踩下（松键不释放）' : '○ 松开';
+  el.sustainOut.style.color = sustainOn ? 'var(--acc)' : '';
+}
+
+async function sustainOff(why){
+  setSustainUI(false);
+  return send(msgCC(currentChannel(), 64, 0),
+              '延音踏板松开（CC64=0）' + (why ? '　← ' + why : ''));
+}
+
+async function toggleSustain(){
+  if (sustainOn){ await sustainOff(''); return; }
+  setSustainUI(true);
+  await send(msgCC(currentChannel(), 64, 127), '延音踏板踩下（CC64=127）');
+}
+
+el.btnSustain.addEventListener('click', toggleSustain);
+
+/* ---------------- 保持（和弦） ---------------- */
+// key = `${ch}:${note}`，value = { ch, note, vel }
+const held = new Map();
+const keyOf = (ch, note) => ch + ':' + note;
+
+function refreshHeld(){
+  const list = [...held.values()];
+  el.heldEmpty.style.display = list.length ? 'none' : '';
+  el.heldTable.style.display = list.length ? '' : 'none';
+  // 没连串口时把话说清楚：这张表是"页面认为在响什么"，不是板子的回读（本来也没有回读）
+  el.heldBody.innerHTML = '';
+  for (const h of list){
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${noteName(h.note)}</td><td>${h.note}</td><td>${h.ch + 1}</td><td>${h.vel}</td>`;
+    const td = document.createElement('td');
+    const b = document.createElement('button');
+    b.className = 'mini danger'; b.textContent = '关';
+    b.onclick = () => releaseOne(h.ch, h.note);
+    td.appendChild(b); tr.appendChild(td);
+    el.heldBody.appendChild(tr);
+  }
+  el.btnAllOff.disabled = list.length === 0;
+}
+
+const RELEASE_VEL = 0x40;   // 释放力度用 MIDI 惯例值 64
+
+async function releaseOne(ch, note){
+  const key = keyOf(ch, note);
+  const h = held.get(key);
+  if (!h) return;
+  /* ⚠ 2026-10-24 修：原来只在 send() 返回 true 时才从表里删。
+     而 noteOn() 是**无条件**把音塞进表的 —— 于是没连串口时会出现"能加不能删"：
+     点 Note On 表里多一个音，点 Note Off / 全部 Note Off 表纹丝不动（用户实测踩到）。
+     现在两边都按"用户意图"走：按了就记、松了就删，界面自洽；
+     没真写进串口这件事由下面的日志说明，不再卡住界面。 */
+  const ok = await send(msgNoteOff(ch, note, RELEASE_VEL), `松开 ${noteName(note)}`);
+  held.delete(key);
+  refreshHeld();
+  if (!ok)
+    logLine([], `  （${noteName(note)} 的 Note Off 没写进串口，界面先按松开处理）`, 'sys');
+}
+
+async function noteOn(){
+  const ch = currentChannel();
+  const n  = clampInt(el.note.value, 0, 127, 60);
+  const v  = currentVelocity();
+
+  // ⚠ 力度 0 的 Note On 按 MIDI 规范**等价于 Note Off**（MIDI协议.md §二）。
+  //   字节照原样发（用力度 0 关音是常用手法），但绝不能记进「正在发声」——
+  //   否则界面会显示一个根本没响的音，调试时会被它误导。
+  if (v === 0){
+    if (held.has(keyOf(ch, n))){ held.delete(keyOf(ch, n)); refreshHeld(); }
+    await send(msgNoteOn(ch, n, 0),
+               `按下 ${noteName(n)} · 力度0 → 按规范等价 Note Off，不计入「正在发声」`);
+    return;
+  }
+
+  // 非保持模式：先松开上一个音，便于快速试单音
+  if (!el.hold.checked && held.size){
+    for (const h of [...held.values()]) await releaseOne(h.ch, h.note);
+  }
+  // 同一个音再按一次：先关掉（避免叠音）
+  if (held.has(keyOf(ch, n))) await releaseOne(ch, n);
+
+  held.set(keyOf(ch, n), { ch, note:n, vel:v });
+  refreshHeld();
+  await send(msgNoteOn(ch, n, v),
+             `按下 ${noteName(n)} · ${noteToHz(n).toFixed(2)}Hz · 力度${v}`);
+}
+
+async function noteOff(){
+  const ch = currentChannel();
+  const n  = clampInt(el.note.value, 0, 127, 60);
+  if (held.has(keyOf(ch, n))) { await releaseOne(ch, n); return; }
+  await send(msgNoteOff(ch, n, RELEASE_VEL), `松开 ${noteName(n)}`);
+}
+
+el.btnOn.addEventListener('click', noteOn);
+el.btnOff.addEventListener('click', noteOff);
+el.btnAllOff.addEventListener('click', async () => {
+  stopSequence();                                     // 顺手把序列也停掉，否则它会继续弹音
+  // ⚠ 先把延音踏板松开：踩着的踏板会让 Note Off 不生效，出现"点了全部关闭但还在响"
+  if (sustainOn) await sustainOff('全部 Note Off 前先松踏板');
+  for (const h of [...held.values()]) await releaseOne(h.ch, h.note);
+});
+el.hold.addEventListener('change', refreshHoldHint);
+function refreshHoldHint(){
+  el.holdHint.textContent = el.hold.checked
+    ? '保持模式：Note On 会累积成和弦（最多 32 声部）'
+    : '单音模式：每次 Note On 会自动给上一个音发 Note Off。';
+}
+
+/* ---------------- 和弦齐发（面板 6） ----------------
+   从基准音起向上按半音连续取 N 个音，**一次写完整串字节**（每个音 3 字节）。
+   用途：32 谱峰 / 复音压测。36 起发 32 个正好是上板手册 §6.2 那串（36…67）。 */
+function chordNotes(base, n){
+  const out = [];
+  for (let i = 0; i < n; i++){
+    const k = base + i;
+    if (k > 127) break;                 // 到顶就截断，不发越界音符号
+    out.push(k);
+  }
+  return out;
+}
+
+/* 纯函数：一次齐发要发的全部字节（Node 自测直接断言它，不需要 DOM） */
+function chordBytes(ch, base, n, vel){
+  const bytes = [];
+  for (const k of chordNotes(base, n)) bytes.push(...msgNoteOn(ch, k, vel));
+  return bytes;
+}
+
+async function stackChord(n){
+  const ch   = currentChannel();
+  const base = clampInt(el.note.value, 0, 127, 60);
+  const vel  = currentVelocity();
+  const keys = chordNotes(base, n);
+
+  if (vel === 0){
+    logLine([], '当前力度是 0：力度 0 的 Note On 按规范等价 Note Off，和弦发出去不会响。先把力度调大。', 'err');
+    return;
+  }
+  if (!keys.length) return;
+  if (keys.length < n)
+    logLine([], `基准音 ${base} 往上只够 ${keys.length} 个音（音符号上限 127），这次按 ${keys.length} 个发。`, 'warn');
+
+  // 先把还按着的音松开，否则「正在发声」里新旧混在一起，数不清谁在响
+  if (held.size){
+    logLine([], `和弦齐发前先松开已按住的 ${held.size} 个音。`, 'sys');
+    for (const h of [...held.values()]) await releaseOne(h.ch, h.note);
+  }
+
+  for (const k of keys) held.set(keyOf(ch, k), { ch: ch, note: k, vel: vel });
+  refreshHeld();
+  await send(chordBytes(ch, base, n, vel),
+             `和弦齐发 ${keys.length} 音 · ${noteName(keys[0])}→${noteName(keys[keys.length - 1])} · 力度${vel}`);
+}
+
+document.querySelectorAll('[data-chord]').forEach(b => b.addEventListener('click', () => {
+  stackChord(parseInt(b.dataset.chord, 10));
+}));
+
+/* ---------------- 音符序列 ----------------
+   输入一串音符依次播放，每个音可以单独指定发音时长。
+   时间轴按 performance.now() 对齐（绝对时间），避免 await 累积漂移。 */
+let seqPlaying = false, seqAbort = false, seqSounding = null;
+
+const SEQ_SEMI = { C:0, D:2, E:4, F:5, G:7, A:9, B:11 };
+
+/* "C4" / "F#3" / "Bb5" / "60" → 音符号；认不出返回 null。
+   音名用科学音高记号：C4 = 60、A4 = 69、C-1 = 0。 */
+function parseNoteToken(tok){
+  const t = String(tok).trim();
+  if (/^\d+$/.test(t)){
+    const n = Number(t);
+    return (n >= 0 && n <= 127) ? n : null;
+  }
+  const m = t.match(/^([A-Ga-g])([#b]?)(-?\d+)$/);
+  if (!m) return null;
+  let semi = SEQ_SEMI[m[1].toUpperCase()];
+  if (m[2] === '#') semi += 1;
+  if (m[2] === 'b') semi -= 1;
+  const n = 12 * (Number(m[3]) + 1) + semi;
+  return (n >= 0 && n <= 127) ? n : null;
+}
+
+/* 解析序列文本 → { items:[{note,dur}], errors:[] }；note = -1 表示休止符 */
+function parseSequence(text, defaultDur){
+  // ⚠ 全角标点归一化：中文输入法下随手就能打出「：」「，」，不认的话
+  //   用户会以为功能坏了（这是最容易被忽略的一类输入问题）。
+  const norm = String(text)
+    .replace(/[：]/g, ':')
+    .replace(/[，、；]/g, ',')
+    .replace(/[－—–−ー]/g, '-')
+    .replace(/[＃♯]/g, '#')
+    .replace(/[\u3000\s]+/g, ' ')
+    .trim();
+
+  const items = [], errors = [];
+  if (!norm) return { items: items, errors: errors };
+
+  for (const raw of norm.split(/[\s,]+/)){
+    const tok = raw.trim();
+    if (!tok) continue;
+
+    // 先拆力度（@），再拆时长（:）—— 形如 C4:300@20
+    const atParts = tok.split('@');
+    if (atParts.length > 2){ errors.push(`${tok}（"@"只能出现一次）`); continue; }
+    const head    = atParts[0];
+    const velPart = (atParts.length > 1) ? atParts[1] : '';
+
+    let vel = null;                       // null = 用面板 6 里的全局力度
+    if (velPart !== ''){
+      const vv = Number(velPart);
+      if (!Number.isFinite(vv) || !Number.isInteger(vv) || vv < 0 || vv > 127){
+        errors.push(`${tok}（力度"${velPart}"不是 0–127 的整数）`);
+        continue;
+      }
+      vel = vv;
+    }
+
+    const parts = head.split(':');
+    const notePart = parts[0];
+    const durPart  = (parts.length > 1) ? parts[1] : '';
+
+    let dur = defaultDur;
+    if (durPart !== ''){
+      const d = Number(durPart);
+      if (!Number.isFinite(d) || d <= 0){
+        errors.push(`${tok}（时长"${durPart}"不是正数）`);
+        continue;
+      }
+      dur = Math.round(d);
+    }
+
+    if (notePart === '-'){ items.push({ note: -1, dur: dur, vel: vel }); continue; }
+
+    const n = parseNoteToken(notePart);
+    if (n === null){ errors.push(`${tok}（认不出这个音）`); continue; }
+    items.push({ note: n, dur: dur, vel: vel });
+  }
+  return { items: items, errors: errors };
+}
+
+const sleepMs = ms => new Promise(r => setTimeout(r, ms));
+
+/* 等到「从 t0 起算的第 target 毫秒」。分片等待，好让「停止」能及时响应。 */
+async function waitUntil(t0, target){
+  for (;;){
+    if (seqAbort) return;
+    const dt = t0 + target - performance.now();
+    if (dt <= 0) return;
+    await sleepMs(Math.min(dt, 50));
+  }
+}
+
+function seqParams(){
+  return {
+    dd : clampInt(el.seqDur.value, 10, 60000, 300),
+    gap: clampInt(el.seqGap.value, 0, 60000, 0)
+  };
+}
+
+function refreshSeqStatus(){
+  const p = seqParams();
+  const r = parseSequence(el.seqInput.value, p.dd);
+
+  if (r.errors.length){
+    el.seqStatus.className = 'note err';
+    el.seqStatus.innerHTML =
+      `⚠ 有 ${r.errors.length} 项认不出，会被跳过：<code>${r.errors.slice(0, 4).join('　')}</code>` +
+      (r.errors.length > 4 ? ' …' : '');
+  }else if (!r.items.length){
+    el.seqStatus.className = 'note';
+    el.seqStatus.textContent = '（还没输入音符）';
+  }else{
+    const notes = r.items.filter(x => x.note >= 0).length;
+    const rests = r.items.length - notes;
+    const vels  = r.items.filter(x => x.note >= 0 && x.vel !== null).map(x => x.vel);
+    const total = r.items.reduce((s, x) => s + x.dur + p.gap, 0);
+    el.seqStatus.className = 'note';
+    el.seqStatus.textContent =
+      `共 ${r.items.length} 项：${notes} 个音` + (rests ? ` + ${rests} 个休止` : '') +
+      `，总时长约 ${(total / 1000).toFixed(2)} s` +
+      (p.gap ? `（含音间间隔 ${p.gap} ms）` : '') +
+      (vels.length ? `；其中 ${vels.length} 个音自带力度（${Math.min(...vels)}–${Math.max(...vels)}）` : '');
+  }
+
+  el.btnSeqPlay.disabled = seqPlaying || r.items.length === 0;
+  el.btnSeqStop.disabled = !seqPlaying;
+}
+
+async function playSequence(){
+  if (seqPlaying) return;
+
+  const p   = seqParams();
+  const ch  = currentChannel();
+  const vel = currentVelocity();
+  const r   = parseSequence(el.seqInput.value, p.dd);
+
+  if (r.errors.length)
+    logLine([], `序列里有 ${r.errors.length} 项认不出，已跳过：${r.errors.join('　')}`, 'err');
+  if (!r.items.length){ logLine([], '序列是空的，没有可播放的内容。', 'err'); return; }
+
+  // 先放开手动按住的音，免得和序列互相干扰
+  if (held.size){
+    logLine([], '播放前先松开手动按住的音，避免与序列互相干扰。', 'sys');
+    for (const h of [...held.values()]) await releaseOne(h.ch, h.note);
+  }
+
+  seqPlaying = true; seqAbort = false;
+  refreshSeqStatus();
+  logLine([], `开始播放序列：${r.items.length} 项 · 通道${ch + 1} · 力度${vel} · ` +
+              `默认时长${p.dd}ms · 间隔${p.gap}ms` + (el.seqLoop.checked ? ' · 循环' : ''), 'sys');
+
+  const t0 = performance.now();
+  let elapsed = 0, idx = 0;
+
+  try{
+    do {
+      for (const it of r.items){
+        if (seqAbort) break;
+        await waitUntil(t0, elapsed);
+        if (seqAbort) break;
+
+        if (it.note >= 0){
+          const v = (it.vel === null) ? vel : it.vel;      // 逐音力度优先，否则用全局
+          seqSounding = it.note;
+          // ⚠ 让「正在发声」也显示序列的音：原来序列用自己的 seqSounding，
+          //   播放时面板 7 一直是"（无）"，看着像没在响。
+          held.set(keyOf(ch, it.note), { ch: ch, note: it.note, vel: v });
+          refreshHeld();
+          el.seqProgress.textContent = `正在播 ${idx + 1}/${r.items.length} · ${noteName(it.note)}`;
+          await send(msgNoteOn(ch, it.note, v),
+                     `序列 ${idx + 1}/${r.items.length} · ${noteName(it.note)} · ${it.dur}ms · 力度${v}`);
+        }
+        await waitUntil(t0, elapsed + it.dur);
+        if (it.note >= 0){
+          await send(msgNoteOff(ch, it.note, RELEASE_VEL), `序列 松开 ${noteName(it.note)}`);
+          seqSounding = null;
+          held.delete(keyOf(ch, it.note));
+          refreshHeld();
+        }
+        elapsed += it.dur + p.gap;
+        idx++;
+        if (seqAbort) break;
+      }
+    } while (el.seqLoop.checked && !seqAbort);
+  }finally{
+    // ⚠ 无论怎么结束（播完 / 停止 / 循环被打断），都要把还按着的音关掉，
+    //   否则 FPGA 上那个音的 gate 会一直是 1，一直响。
+    if (seqSounding !== null){
+      await send(msgNoteOff(ch, seqSounding, RELEASE_VEL),
+                 `序列结束，补发 Note Off（${noteName(seqSounding)}）`);
+      held.delete(keyOf(ch, seqSounding));
+      seqSounding = null;
+    }
+    // 序列自己加进「正在发声」的音全部收干净（手动按的音在开头已经放掉了）
+    for (const h of [...held.values()]) held.delete(keyOf(h.ch, h.note));
+    refreshHeld();
+    el.seqProgress.textContent = '';
+    seqPlaying = false;
+    refreshSeqStatus();
+    logLine([], seqAbort ? '序列已停止。' : '序列播放完毕。', 'sys');
+  }
+}
+
+function stopSequence(){
+  if (!seqPlaying) return;
+  seqAbort = true;      // waitUntil 分片检查它，所以能很快退出
+}
+
+/* 力度扫描：用同一个音依次试几个力度。
+   这是判断「力度到底有没有生效」最直接的办法 ——
+   如果 FPGA 侧没把力度用起来（voice_alloc 没按 velocity 派生 velocity_gain），
+   这串音听起来会**完全一样响**。 */
+const VEL_SWEEP = 'C4@20 C4@50 C4@80 C4@110 C4@127';
+
+async function velSweep(){
+  if (seqPlaying){                       // 正在播就先停，等它退干净
+    stopSequence();
+    await sleepMs(150);
+  }
+  el.seqInput.value = VEL_SWEEP;
+  el.seqDur.value = clampInt(el.seqDur.value, 10, 60000, 300);
+  refreshSeqStatus();
+  logLine([], '力度扫描：同一个音依次用 ' + VEL_SWEEP.replace(/C4@/g, '').split(' ').join(' / ') +
+              ' 触发。若听不出音量差异 → FPGA 侧没有把力度用起来' +
+              '（应检查 voice_alloc 是否按 velocity + vel_sensitivity 派生 velocity_gain）。', 'sys');
+  await playSequence();
+}
+
+el.btnSeqPlay.addEventListener('click', playSequence);
+el.btnSeqStop.addEventListener('click', stopSequence);
+el.btnSeqVelSweep.addEventListener('click', velSweep);
+el.seqInput.addEventListener('input', refreshSeqStatus);
+el.seqDur.addEventListener('input', refreshSeqStatus);
+el.seqGap.addEventListener('input', refreshSeqStatus);
+
+/* ---------------- 序列预设（面板 8 的一键填入） ----------------
+   只填内容，**不自动播放** —— 填错了还能改，别一点就把一串音发出去。 */
+const SEQ_PRESET_INFO = {
+  scale : { name:'音阶',   text:'C4 D4 E4 F4 G4 A4 B4 C5', dur: 300 },
+  chroma: { name:'半音阶', text:'C4 C#4 D4 D#4 E4 F4 F#4 G4 G#4 A4 A#4 B4 C5', dur: 250 },
+  sweep : { name:'低→高扫', text:'36 48 60 72 84 96', dur: 600 },
+  arp   : { name:'琶音',   text:'C4 E4 G4 C5 G4 E4', dur: 200 }
+};
+
+function applySeqPreset(key){
+  const info = SEQ_PRESET_INFO[key];
+  if (!info) return;
+  el.seqInput.value = info.text;
+  el.seqDur.value   = info.dur;
+  el.seqLoop.checked = false;          // 预设一律不循环，免得点播放后停不下来
+  refreshSeqStatus();
+  logLine([], `已填入选「${info.name}」：${info.text}（点「播放」才会发）`, 'sys');
+}
+
+document.querySelectorAll('[data-seq]').forEach(b => {
+  b.addEventListener('click', () => applySeqPreset(b.dataset.seq));
+});
+
+/* ---------------- 手动十六进制 ---------------- */
+async function sendRaw(){
+  const txt = el.rawHex.value.trim();
+  if (!txt) return;
+  const parts = txt.split(/[\s,]+/).filter(Boolean);
+  const bytes = [];
+  for (const p of parts){
+    if (!/^[0-9a-fA-F]{1,2}$/.test(p)){
+      logLine([], `无法解析的十六进制片段："${p}"`, 'err');
+      return;
+    }
+    bytes.push(parseInt(p, 16));
+  }
+  // 按状态字节切成消息，逐条发 + 逐条解析，日志更好读
+  for (const one of splitMessages(bytes)){
+    await send(one, '');
+  }
+}
+el.btnRaw.addEventListener('click', sendRaw);
+el.rawHex.addEventListener('keydown', e => { if (e.key === 'Enter') sendRaw(); });
+
+/* ---------------- 指令检查（面板 10） ---------------- */
+el.btnSelfTest.addEventListener('click', () => doSelfTest(true));
+el.btnClearIssues.addEventListener('click', () => {
+  checkStats.err = 0; checkStats.warn = 0; checkStats.info = 0;
+  lastLogAt = {};
+  issueLog.length = 0;
+  refreshCheckSummary();
+  logLine([], '已清空指令检查记录（自检结果保留）。', 'sys');
+});
+
+/* ---------------- 通用可中断等待（演示流程用） ----------------
+   分片等待，每 50 ms 检查一次中止标志，这样「停止」能立刻生效。 */
+async function sleepUnless(ms, isAbort){
+  const t0 = performance.now();
+  for (;;){
+    if (isAbort()) return false;
+    const dt = t0 + ms - performance.now();
+    if (dt <= 0) return true;
+    await sleepMs(Math.min(dt, 50));
+  }
+}
+
+/* ---------------- 一键演示（面板 11） ----------------
+   串起整场：清场 → 32 复音 → 8 音色 → CC11 音量 → CC74/CC71 滤波 → 效果器 → 收尾。
+   ⚠ 每一步都走 send()，所以「10 · 指令检查」会同步核一遍（例如在乐器口跑效果器那段会报 err）。 */
+let demoRunning = false, demoAbort = false;
+const DEMO_STAGES = 6;
+
+async function runDemo(){
+  if (demoRunning) return;
+  if (seqPlaying) stopSequence();
+
+  demoRunning = true; demoAbort = false;
+  el.btnDemo.disabled = true; el.btnDemoStop.disabled = false;
+
+  const ch   = currentChannel();
+  const base = clampInt(el.note.value, 0, 127, 60);
+  const t0   = performance.now();
+  let stage = 0;
+
+  const mark = name => {
+    stage++;
+    el.demoStatus.textContent = `第 ${stage}/${DEMO_STAGES} 段 · ${name}`;
+    logLine([], `—— 演示 ${stage}/${DEMO_STAGES}：${name} ——`, 'sys');
+  };
+  const pause = ms => sleepUnless(ms, () => demoAbort);
+
+  try{
+    // 先把手动按住的音放开，避免演示期间"谁在响"对不上
+    if (held.size){
+      for (const h of [...held.values()]) await releaseOne(h.ch, h.note);
+    }
+
+    mark('清场');
+    await send(msgCC(ch, 123, 0), '演示：清场（All Notes Off）');
+    if (!await pause(300)) return;
+
+    mark('32 复音压测（36→67）');
+    await send(chordBytes(ch, 36, 32, 100), '演示：32 音齐发 · 36→67 · 力度 100');
+    if (!await pause(2500)) return;
+    await send(msgCC(ch, 123, 0), '演示：32 音收场');
+
+    mark('8 音色轮听（PC 0–7）');
+    for (let p = 0; p < 8; p++){
+      await send([...msgCC(ch, 0, 0), ...msgCC(ch, 32, 0), ...msgPC(ch, p)],
+                 `演示：音色 ${p} ${TIMBRE_NAMES[p]} → timbre_slot ${p & 7}`);
+      await send(msgNoteOn(ch, base, 100), `演示：音色 ${p} 弹 ${noteName(base)}`);
+      if (!await pause(600)) return;
+      await send(msgNoteOff(ch, base, RELEASE_VEL), `演示：音色 ${p} 松开`);
+      if (!await pause(150)) return;
+    }
+
+    mark('CC11 音量扫描');
+    await send(msgNoteOn(ch, base, 100), '演示：按住一个音，边扫 CC11');
+    for (const v of [127, 90, 64, 32, 8, 127]){
+      await send(msgCC(ch, 11, v), `演示：CC11 表情 = ${v}`);
+      if (!await pause(450)) return;
+    }
+    await send(msgNoteOff(ch, base, RELEASE_VEL), '演示：松开');
+
+    mark('CC74 / CC71 滤波扫描（槽 6）');
+    await send([...msgCC(ch, 0, 0), ...msgCC(ch, 32, 0), ...msgPC(ch, 6)],
+               '演示：切到槽 6（弦乐，滤波最容易听出来）');
+    await send(msgNoteOn(ch, 48, 100), '演示：C3 按住不动');
+    for (const v of [0, 64, 127, 64]){
+      await send(msgCC(ch, 74, v), `演示：CC74 截止 = ${v}（越大越亮）`);
+      if (!await pause(500)) return;
+    }
+    for (const v of [0, 64, 127, 64]){
+      await send(msgCC(ch, 71, v), `演示：CC71 谐振 = ${v}（越大越尖）`);
+      if (!await pause(500)) return;
+    }
+    await send(msgNoteOff(ch, 48, RELEASE_VEL), '演示：松开 C3');
+
+    mark('效果器全关 / 全开对照');
+    await send([...msgCC(ch, 91, 0), ...msgCC(ch, 93, 0), ...msgCC(ch, 94, 0)], '演示：效果全关');
+    await send(msgNoteOn(ch, base, 110), '演示：效果全关时弹一个音');
+    if (!await pause(1200)) return;
+    await send(msgNoteOff(ch, base, RELEASE_VEL), '演示：松开');
+    await send([...msgCC(ch, 91, 127), ...msgCC(ch, 93, 127), ...msgCC(ch, 94, 127)], '演示：效果全开');
+    await send(msgNoteOn(ch, base, 110), '演示：效果全开时弹同样的音');
+    if (!await pause(1500)) return;
+    await send(msgNoteOff(ch, base, RELEASE_VEL), '演示：松开');
+
+    logLine([], `一键演示走完，用时 ${((performance.now() - t0) / 1000).toFixed(1)} s。`, 'sys');
+  }finally{
+    const aborted = demoAbort;
+    demoRunning = false; demoAbort = false;
+    el.btnDemo.disabled = false; el.btnDemoStop.disabled = true;
+    el.demoStatus.textContent = aborted ? '已停止' : '已走完';
+    // 收尾一定补一条 CC123：中途停掉也不会在板子上留一个一直响的音
+    await send(msgCC(currentChannel(), 123, 0), '演示收尾（All Notes Off）');
+    refreshHeld();
+  }
+}
+
+el.btnDemo.addEventListener('click', runDemo);
+el.btnDemoStop.addEventListener('click', () => {
+  if (!demoRunning) return;
+  demoAbort = true;
+  el.demoStatus.textContent = '正在停止…';
+  logLine([], '演示：收到停止请求，会在收尾时补一条 CC123。', 'sys');
+});
+
+/* ---------------- ADSR 包络（面板 12） ----------------
+   数据来源全是 RTL，不是文档转述：
+     full_system.v  tp_of()                 8 槽 × 8 字段（f/q/ft/curve/a/d/s/r）
+     full_system.v  atk_s / rel_s           CC73 / CC72 的偏移方向与钳位
+     adsr_vca.v     attack_step = 32768 / (attack_ms × fs/1000) → 反解出时间
+   fs = 48000（chan_table.v 与 音色参数表.md 的口径）。 */
+const ENV_FS  = 48000;
+const ENV_MAX = 32768;
+
+/* 只取包络相关的 a / d / s / r 四个字段（f_coeff / q_coeff / filter_type 影响的是亮度，不在包络里） */
+const TIMBRE_TABLE = [
+  { a: 2,   d: 1,  s: 24000, r: 1 },   // 槽 0
+  { a: 341, d: 3,  s: 8000,  r: 2 },   // 槽 1
+  { a: 1,   d: 1,  s: 26000, r: 1 },   // 槽 2
+  { a: 17,  d: 3,  s: 20000, r: 2 },   // 槽 3
+  { a: 51,  d: 14, s: 22000, r: 14 },  // 槽 4 Pad（指数包络）
+  { a: 137, d: 7,  s: 20000, r: 4 },   // 槽 5
+  { a: 34,  d: 3,  s: 20000, r: 2 },   // 槽 6
+  { a: 682, d: 14, s: 0,     r: 1 }    // 槽 7
+];
+
+/* 一个槽的包络时间常数（ms）与持续电平（0–1），已叠加 CC73 / CC72 的影响 */
+function envSegments(slot, cc73, cc72){
+  const idx = ((slot % 8) + 8) % 8;
+  const t   = TIMBRE_TABLE[idx];
+  // full_system.v: a_step = clamp(t_astep − ((CC73−64) >>> 1), 1, 32767)  ← 值越大起音越慢
+  const aStep = Math.max(1, Math.min(32767, t.a - ((cc73 - 64) >> 1)));
+  const rStep = Math.max(1, Math.min(32767, t.r - ((cc72 - 64) >> 1)));
+  const sRaw  = Math.min(t.s, 32767);
+  return {
+    slot: idx, aStep: aStep, dStep: t.d, rStep: rStep,
+    sLevel: sRaw / ENV_MAX,
+    aMs: ENV_MAX * 1000 / (aStep * ENV_FS),
+    dMs: (ENV_MAX - sRaw) * 1000 / (t.d * ENV_FS),
+    rMs: sRaw * 1000 / (rStep * ENV_FS)
+  };
+}
+
+function renderEnv(){
+  if (!el.envSum) return;
+  const prog = clampInt(el.prog.value, 0, 127, 0);
+  const slot = prog & 7;
+  const cc73 = ccCtls.has(73) ? ccCtls.get(73).get() : 64;
+  const cc72 = ccCtls.has(72) ? ccCtls.get(72).get() : 64;
+  const e = envSegments(slot, cc73, cc72);
+
+  el.envSum.textContent =
+    `槽 ${slot} · A ${e.aMs.toFixed(0)} ms · D ${e.dMs.toFixed(0)} ms · ` +
+    `S ${(e.sLevel * 100).toFixed(0)}% · R ${e.rMs.toFixed(0)} ms`;
+  el.envHint.innerHTML =
+    `步长 a=${e.aStep} / d=${e.dStep} / s=${Math.min(TIMBRE_TABLE[slot].s, 32767)} / r=${e.rStep}　` +
+    `当前 CC73=${cc73}、CC72=${cc72}（64 = 不偏移）。` +
+    `按 <code>full_system.v</code> 的 <code>tp_of()</code> 参数 + <code>adsr_vca.v</code> 的公式推算，` +
+    `<b>不是从板子读回来的</b>。` +
+    ((e.aMs > 150 || e.rMs > 150)
+      ? ' <b>起音或释放已经很长</b>，按键时长要跟着放长。' : '');
+}
+function refreshEnvIfNeeded(cc){
+  if (cc === 73 || cc === 72) renderEnv();
+}
+
+/* ---------------- 预设（面板 13） ----------------
+   只存"界面上的值"，**不存串口连接状态**（换设备必须重新在浏览器里授权）。
+   载入**不发送任何字节** —— 调试器里这点很重要，别一点载入就把板子上的音色改了。 */
+const PRESET_KEY = 'fpga-midi-debugger-preset-v1';
+const PRESET_APP = 'fpga-midi-debugger';
+
+function collectPreset(){
+  const cc = {};
+  for (const [k, ctl] of ccCtls) cc[k] = ctl.get();
+  return {
+    _app: PRESET_APP,
+    _ver: 1,
+    _savedAt: new Date().toISOString(),
+    baud: el.baud.value,
+    baudCustom: el.baudCustom.value,
+    port: currentPmode(),
+    ch: clampInt(el.midiCh.value, 1, 16, 1),
+    bankMsb: clampInt(el.bankMsb.value, 0, 127, 0),
+    bankLsb: clampInt(el.bankLsb.value, 0, 127, 0),
+    prog: clampInt(el.prog.value, 0, 127, 0),
+    note: clampInt(el.note.value, 0, 127, 60),
+    vel: clampInt(el.velNum.value, 0, 127, 100),
+    hold: !!el.hold.checked,
+    bend: clampInt(el.bend.value, 0, BEND_MAX, BEND_CENTER),
+    cc: cc,
+    seq: {
+      text: String(el.seqInput.value || ''),
+      dur : clampInt(el.seqDur.value, 10, 60000, 300),
+      gap : clampInt(el.seqGap.value, 0, 60000, 0),
+      loop: !!el.seqLoop.checked
+    },
+    raw: String(el.rawHex.value || '')
+  };
+}
+
+/* 导入前先验：不是本应用的、结构不对就拒绝，别把界面搞成一堆 undefined */
+function validatePreset(p){
+  if (!p || typeof p !== 'object') return '内容不是一个 JSON 对象';
+  if (p._app !== PRESET_APP)
+    return `不是本调试器的预设（_app = ${JSON.stringify(p._app)}）`;
+  if (p.cc !== undefined && (typeof p.cc !== 'object' || p.cc === null || Array.isArray(p.cc)))
+    return 'cc 字段不是对象';
+  if (p.seq !== undefined && (typeof p.seq !== 'object' || p.seq === null || Array.isArray(p.seq)))
+    return 'seq 字段不是对象';
+  return null;
+}
+
+function applyPreset(p){
+  const bad = validatePreset(p);
+  if (bad) throw new Error(bad);
+
+  // 波特率：只接受下拉里有的档位，其余落回 31250
+  const baudOk = ['31250', '38400', '57600', '115200', 'custom'];
+  el.baud.value = baudOk.includes(p.baud) ? p.baud : '31250';
+  el.baudCustom.value = String(clampInt(p.baudCustom, 300, 3000000, 31250));
+  el.baudCustom.style.display = (el.baud.value === 'custom') ? '' : 'none';
+
+  const port = (p.port === 'mixer') ? 'mixer' : 'instrument';
+  document.querySelectorAll('input[name=pmode]').forEach(r => { r.checked = (r.value === port); });
+
+  el.midiCh.value  = clampInt(p.ch, 1, 16, 1);
+  el.bankMsb.value = clampInt(p.bankMsb, 0, 127, 0);
+  el.bankLsb.value = clampInt(p.bankLsb, 0, 127, 0);
+  el.prog.value    = clampInt(p.prog, 0, 127, 0);
+
+  const n = clampInt(p.note, 0, 127, 60);
+  el.note.value = n;
+  el.noteName.textContent = noteName(n);
+  el.freq.value = noteToHz(n).toFixed(3);
+  el.freq.title = '';
+
+  const v = clampInt(p.vel, 0, 127, 100);
+  el.vel.value = v;
+  el.velNum.value = v;
+
+  el.hold.checked = !!p.hold;
+
+  const bend = clampInt(p.bend, 0, BEND_MAX, BEND_CENTER);
+  el.bend.value = bend;
+  el.bendNum.value = bend;
+  syncBend('range');
+
+  if (p.cc && typeof p.cc === 'object'){
+    for (const [k, ctl] of ccCtls){
+      if (p.cc[k] === undefined) continue;
+      ctl.set(clampInt(p.cc[k], 0, 127, 64));
+    }
+  }
+
+  const s = (p.seq && typeof p.seq === 'object') ? p.seq : {};
+  el.seqInput.value  = String(s.text === undefined ? '' : s.text);
+  el.seqDur.value    = clampInt(s.dur, 10, 60000, 300);
+  el.seqGap.value    = clampInt(s.gap, 0, 60000, 0);
+  el.seqLoop.checked = !!s.loop;
+
+  el.rawHex.value = String(p.raw === undefined ? '' : p.raw);
+
+  // 把依赖这些值的面板刷一遍（**不发送任何字节**）
+  refreshBaudHint();
+  refreshPmodeNote();
+  refreshSlot();
+  renderEnv();
+  refreshHoldHint();
+  refreshSeqStatus();
+  el.presetOut.textContent = `已载入预设（保存于 ${p._savedAt || '未知时间'}）· 只改了界面，没有发送`;
+}
+
+function savePreset(){
+  try{
+    localStorage.setItem(PRESET_KEY, JSON.stringify(collectPreset()));
+    el.presetOut.textContent = '已保存到浏览器（localStorage）';
+    logLine([], '预设已保存到浏览器。换浏览器或清缓存会丢，重要配置建议再导出 .json。', 'sys');
+  }catch(e){
+    el.presetOut.textContent = '保存失败：' + (e && e.message ? e.message : e);
+    logLine([], '预设保存失败：' + (e && e.message ? e.message : e), 'err');
+  }
+}
+
+function loadPreset(){
+  try{
+    const txt = localStorage.getItem(PRESET_KEY);
+    if (!txt){ el.presetOut.textContent = '浏览器里还没有保存过的预设'; return; }
+    applyPreset(JSON.parse(txt));
+    logLine([], '已从浏览器载入预设。', 'sys');
+  }catch(e){
+    el.presetOut.textContent = '载入失败：' + (e && e.message ? e.message : e);
+    logLine([], '预设载入失败：' + (e && e.message ? e.message : e), 'err');
+  }
+}
+
+function exportPreset(){
+  try{
+    const txt  = JSON.stringify(collectPreset(), null, 2);
+    const blob = new Blob([txt], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = 'midi-debugger-preset.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    el.presetOut.textContent = '已导出 midi-debugger-preset.json';
+    logLine([], '预设已导出（浏览器下载）。', 'sys');
+  }catch(e){
+    el.presetOut.textContent = '导出失败：' + (e && e.message ? e.message : e);
+    logLine([], '预设导出失败：' + (e && e.message ? e.message : e), 'err');
+  }
+}
+
+el.btnPresetSave.addEventListener('click', savePreset);
+el.btnPresetLoad.addEventListener('click', loadPreset);
+el.btnPresetExport.addEventListener('click', exportPreset);
+el.btnPresetImport.addEventListener('click', () => el.presetFile.click());
+el.presetFile.addEventListener('change', async () => {
+  const f = el.presetFile.files && el.presetFile.files[0];
+  if (!f) return;
+  try{
+    applyPreset(JSON.parse(await f.text()));
+    logLine([], `已导入预设：${f.name}`, 'sys');
+  }catch(e){
+    el.presetOut.textContent = '导入失败：' + (e && e.message ? e.message : e);
+    logLine([], '预设导入失败：' + (e && e.message ? e.message : e), 'err');
+  }finally{
+    el.presetFile.value = '';
+  }
+});
+
+/* ---------------- 日志区高度（固定在底部，可上下拖） ----------------
+   原来日志在页面最底下，点完面板上的按钮得滚很久才能看到发了什么字节。
+   现在整页不滚动：只有面板区（.wrap）自己滚，日志永远贴在窗口底部。
+   中间那条细条可以上下拖，双击它恢复默认高度（34% 窗口高）。 */
+const LOG_H_KEY = 'midi-debugger-log-height';
+const LOG_H_DEFAULT = 0.34;
+let logDragging = false;
+
+/* 高度夹取：最小 110px、最大 72% 窗口高（留点头给面板区，不然面板全被挤没） */
+function clampLogHeight(px, winH){
+  const h = Number(winH) > 0 ? Number(winH) : 800;
+  return Math.max(110, Math.min(Math.round(h * 0.72), Math.round(Number(px) || 0)));
+}
+
+function defaultLogHeight(){
+  return Math.round((window.innerHeight || 800) * LOG_H_DEFAULT);
+}
+
+function applyLogHeight(px){
+  const h = clampLogHeight(px, window.innerHeight || 800);
+  el.logPanel.style.height = h + 'px';
+  return h;
+}
+
+el.logResizer.addEventListener('mousedown', ev => {
+  logDragging = true;
+  document.body.style.cursor = 'row-resize';
+  if (ev && ev.preventDefault) ev.preventDefault();
+});
+document.addEventListener('mousemove', ev => {
+  if (!logDragging) return;
+  applyLogHeight((window.innerHeight || 800) - (ev.clientY || 0) - 14);
+});
+document.addEventListener('mouseup', () => {
+  if (!logDragging) return;
+  logDragging = false;
+  document.body.style.cursor = '';
+  try {
+    localStorage.setItem(LOG_H_KEY, String(parseFloat(el.logPanel.style.height) || defaultLogHeight()));
+  } catch (_) { }
+});
+el.logResizer.addEventListener('dblclick', () => {
+  applyLogHeight(defaultLogHeight());
+  try { localStorage.removeItem(LOG_H_KEY); } catch (_) { }
+});
+
+/* ---------------- 日志按钮 ---------------- */
+el.btnClearLog.addEventListener('click', () => { el.log.innerHTML = ''; });
+el.btnCopyLog.addEventListener('click', async () => {
+  const txt = el.log.innerText;
+  try{
+    await navigator.clipboard.writeText(txt);
+    logLine([], '日志已复制到剪贴板', 'sys');
+  }catch{
+    // 剪贴板不可用时退化为选中
+    const r = document.createRange(); r.selectNodeContents(el.log);
+    const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    logLine([], '已选中日志，请按 Ctrl+C 复制', 'sys');
+  }
+});
+
+/* ---------------- 杂项：CC120 / 两种 SysEx（面板 14） ----------------
+   字节格式以 midi_filter.v 的解析为准：
+     效果参数：F0 7D <grp> <idx> <hi> <lo> F7  ← **hi 在前**（sxb[3] 高、sxb[4] 低）
+     主音量  ：F0 7F <dev> 04 01 <ll> <mm> F7  ← **lo 在前**（sxb[4] 低、sxb[5] 高）
+   两条的字节顺序是**相反**的，别搞混 —— RTL 里就是这样（主音量沿用 GM2 的 LSB 在前）。 */
+const SYSEX_FX_GRP_NAMES = ['混响', '合唱', '延迟', '主输出'];
+
+function sysexFxBytes(grp, idx, val14){
+  const v = Math.max(0, Math.min(16383, Math.round(Number(val14) || 0)));
+  return [0xF0, 0x7D, (Number(grp) || 0) & 3, (Number(idx) || 0) & 15,
+          (v >> 7) & 0x7F, v & 0x7F, 0xF7];
+}
+
+function sysexMasterBytes(dev, val14){
+  const v = Math.max(0, Math.min(16383, Math.round(Number(val14) || 0)));
+  return [0xF0, 0x7F, (Number(dev) || 0) & 0x7F, 0x04, 0x01,
+          v & 0x7F, (v >> 7) & 0x7F, 0xF7];
+}
+
+function refreshSysexPreview(){
+  const fx = sysexFxBytes(el.fxGrp.value, el.fxIdx.value, el.fxVal.value);
+  el.fxPreview.innerHTML = `将发 <code>${hexStr(fx)}</code>　` +
+    `组 ${fx[2]}（${SYSEX_FX_GRP_NAMES[fx[2]]}）· 参数 ${fx[3]} · 值 ${((fx[4] << 7) | fx[5])}（14 位）`;
+
+  const mv = sysexMasterBytes(el.masterDev.value, el.masterVol.value);
+  el.masterPreview.innerHTML = `将发 <code>${hexStr(mv)}</code>　` +
+    `14 位音量 ${((mv[6] << 7) | mv[5])}（0 = 静音，16383 = 满）`;
+}
+
+el.btnCC120.addEventListener('click', () =>
+  send(msgCC(currentChannel(), 120, 0), 'CC120 立即断音（硬切，可能 click）'));
+el.btnCC123.addEventListener('click', () =>
+  send(msgCC(currentChannel(), 123, 0), 'CC123 全部音符关（走 RELEASE，更自然）'));
+
+el.btnSysexFx.addEventListener('click', () => {
+  const grp = Number(el.fxGrp.value) & 3;
+  send(sysexFxBytes(grp, el.fxIdx.value, el.fxVal.value),
+       `效果参数 SysEx · 组 ${grp}（${SYSEX_FX_GRP_NAMES[grp]}）`);
+});
+el.btnSysexMaster.addEventListener('click', () => {
+  send(sysexMasterBytes(el.masterDev.value, el.masterVol.value), '主音量 SysEx（14 位）');
+});
+
+['fxGrp', 'fxIdx', 'fxVal', 'masterDev', 'masterVol'].forEach(k => {
+  el[k].addEventListener('input', refreshSysexPreview);
+  el[k].addEventListener('change', refreshSysexPreview);
+});
+
+/* 主音量拖动条与数字框联动（拖动不发字节，只有点「发送」才发 —— SysEx 不该被拖一次刷几十条） */
+function syncMasterVol(from){
+  const v = clampInt(from === 'num' ? el.masterVol.value : el.masterVolRange.value,
+                      0, 16383, 16383);
+  el.masterVolRange.value = v;
+  el.masterVol.value = v;
+  refreshSysexPreview();
+  return v;
+}
+el.masterVolRange.addEventListener('input', () => syncMasterVol('range'));
+el.masterVol.addEventListener('input', () => syncMasterVol('num'));
+
+/* ---------------- 面板分类（顶部类型栏） ----------------
+   15 个面板分 5 类，点类型栏只显示该类，「全部」恢复。
+   日志区不在 #panelFlow 里，所以切类型不影响它。 */
+const CAT_NAMES = { all:'全部', conn:'连接', play:'演奏', mod:'调制', cmd:'指令', mix:'混音' };
+
+function applyCategory(cat){
+  const panels = document.querySelectorAll('#panelFlow > section[data-cat]');
+  let shown = 0;
+  for (const p of panels){
+    const on = (cat === 'all') || (p.dataset.cat === cat);
+    p.style.display = on ? '' : 'none';
+    if (on) shown++;
+  }
+  document.querySelectorAll('[data-catbtn]').forEach(b => {
+    b.className = 'mini' + (b.dataset.catbtn === cat ? ' on' : '');
+  });
+  el.catHint.textContent = `共 ${shown} 个面板` +
+    (cat === 'all' ? '' : `（${CAT_NAMES[cat] || cat}）`);
+  return shown;
+}
+
+document.querySelectorAll('[data-catbtn]').forEach(b => {
+  b.addEventListener('click', () => applyCategory(b.dataset.catbtn));
+});
+
+/* ---------------- 面板折叠（10–13 默认收起） ----------------
+   调试辅助那几个面板内容多（检查清单 / 演示 / 包络图 / 杂项），默认收起来，
+   页面才不至于一屏全是控件。点标题栏展开或收起。
+   状态**不持久化** —— 刷新后回到默认，避免"上次收起了这次找不着"。 */
+function initFoldable(){
+  document.querySelectorAll('[data-fold] > h2').forEach(h => {
+    h.title = '点击展开 / 收起';
+    h.addEventListener('click', () => {
+      const p   = h.parentNode;
+      const has = (' ' + p.className + ' ').indexOf(' collapsed ') >= 0;
+      p.className = has
+        ? (' ' + p.className + ' ').replace(' collapsed ', ' ').trim()
+        : (p.className + ' collapsed').trim();
+    });
+  });
+}
+
+/* ---------------- 工具 ---------------- */
+function clampInt(v, lo, hi, dflt){
+  const n = parseInt(v, 10);
+  if (!isFinite(n)) return dflt;
+  return Math.max(lo, Math.min(hi, n));
+}
+
+/* ---------------- 启动 ---------------- */
+(function init(){
+  const blocker = connBlocker();
+
+  if (blocker){
+    el.support.textContent = '无法连接串口';
+    el.support.className = 'pill off';
+  }else{
+    el.support.textContent = '支持 Web Serial';
+    el.support.className = 'pill on';
+  }
+
+  setConnected(false);
+
+  // ⚠ 顺序要紧：setConnected() 会按状态重设 el.btnConn.disabled，
+  //   所以「该禁用连接按钮」必须在它之后设，否则会被覆盖掉。
+  if (blocker){
+    el.btnConn.disabled = true;
+    el.btnConn.title = blocker.html.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');
+  }
+
+  refreshBaudHint();
+  initFoldable();          // 面板 10–13 默认收起，点标题栏展开
+  applyCategory('all');    // 类型栏初始停在「全部」
+  // 8 个音色按钮的文案统一从 TIMBRE_NAMES 取（改名字只改那一处）
+  document.querySelectorAll('[data-preset]').forEach(b => {
+    const tp = Number(String(b.dataset.preset || '').split(',')[2]);
+    if (TIMBRE_NAMES[tp] !== undefined) b.textContent = `${tp} · ${TIMBRE_NAMES[tp]}`;
+  });
+  refreshSlot();
+  buildCcRows(el.ccExprRows, CC_ROWS_EXPR);   // 面板 4 的 CC 滑杆
+
+/* ---------------- 15 · 混音台（16 通道） ----------------
+   与 mixer.html 同一套模型，但**串口只有一份**，所以直接复用本页的 send()。
+   点表格某一行 = 把「MIDI 通道」也切到该通道，这样随后弹音符也落在同一通道。 */
+const MX_NCH = 16;
+const MX_DEF = { prog:0, vol:100, pan:64, expr:127, rev:40, cho:0, del:0 };
+const MX_FIELDS = [
+  { key:'vol',  cc:7,  name:'音量' },
+  { key:'pan',  cc:10, name:'声像' },
+  { key:'expr', cc:11, name:'表情' },
+  { key:'rev',  cc:91, name:'混响' },
+  { key:'cho',  cc:93, name:'合唱' },
+  { key:'del',  cc:94, name:'延迟' },
+];
+const mxState = Array.from({ length:MX_NCH }, () => ({ ...MX_DEF }));
+
+/* 拖动条实时发送：40 ms 节流，松手补发最终值。
+   不能复用 ccThrottle —— 那个是单例且只发 currentChannel，混音台要指定通道。 */
+const mxThrottle = (() => {
+  let last = 0, timer = null, pending = null;
+  const flush = () => {
+    timer = null;
+    if (!pending) return;
+    const q = pending; pending = null;
+    mxSend(q.cc, q.val, q.ch);
+    last = Date.now();
+  };
+  return {
+    push(cc, val, ch){
+      pending = { cc, val, ch };
+      const now = Date.now();
+      if (now - last >= CC_THROTTLE_MS) flush();
+      else if (!timer) timer = setTimeout(flush, CC_THROTTLE_MS - (now - last));
+    },
+    flushNow(){
+      if (timer){ clearTimeout(timer); timer = null; }
+      if (!pending) return false;
+      flush(); return true;
+    }
+  };
+})();
+let mxCur = 0;
+
+function mxSend(cc, val, ch){
+  return send([0xB0 | (ch & 0x0F), cc & 0x7F, val & 0x7F], `混音 CH${ch + 1} CC${cc}=${val}`);
+}
+function mxSendProg(p, ch){
+  return send([0xC0 | (ch & 0x0F), p & 0x7F], `混音 CH${ch + 1} 音色 ${p} ${TIMBRE_NAMES[p & 7]}`);
+}
+
+/* 表格一页 4 行：通道多的时候整块太高，分页翻（16 通道 = 4 页） */
+const MX_PAGE = 4;
+let mxPage = 0;
+
+function mxRenderTable(){
+  const tb = document.getElementById('mxBody');
+  if (!tb) return;
+  let html = '';
+  const from = mxPage * MX_PAGE, to = Math.min(from + MX_PAGE, MX_NCH);
+  for (let i = from; i < to; i++){
+    const st = mxState[i];
+    html += '<tr data-mxch="' + i + '"' + (i === mxCur ? ' class="on"' : '') + '>' +
+      '<td>CH' + (i + 1) + '</td>' +
+      '<td>' + st.prog + ' ' + TIMBRE_NAMES[st.prog & 7] + '</td>' +
+      MX_FIELDS.map(f => '<td>' + st[f.key] + '</td>').join('') +
+      '</tr>';
+  }
+  tb.innerHTML = html;
+  const lbl = document.getElementById('mxPage');
+  if (lbl) lbl.textContent = 'CH' + (from + 1) + '–' + to +
+                            ' · ' + (mxPage + 1) + '/' + Math.ceil(MX_NCH / MX_PAGE);
+}
+
+function mxUpdateRow(i){
+  const tr = document.querySelector('#mxBody tr[data-mxch="' + i + '"]');
+  if (!tr || !tr.children) return;
+  const st = mxState[i], tds = tr.children;
+  tds[1].textContent = st.prog + ' ' + TIMBRE_NAMES[st.prog & 7];
+  MX_FIELDS.forEach((f, k) => { tds[k + 2].textContent = st[f.key]; });
+}
+
+function mxBuildEdit(){
+  const host = document.getElementById('mxEdit');
+  if (!host) return;
+  host.innerHTML = '';
+
+  /* 音色（Program Change） */
+  const row0 = document.createElement('div');
+  row0.className = 'row';
+  const lb0 = document.createElement('label');
+  lb0.textContent = '音色';
+  const se = document.createElement('select');
+  TIMBRE_NAMES.forEach((t, i) => {
+    const o = document.createElement('option');
+    o.value = String(i); o.textContent = i + ' ' + t;
+    se.appendChild(o);
+  });
+  se.addEventListener('change', () => {
+    const p = +se.value;
+    mxState[mxCur].prog = p;
+    mxUpdateRow(mxCur);
+    mxSendProg(p, mxCur);
+  });
+  mxCtl.prog = se;
+  row0.appendChild(lb0);
+  row0.appendChild(se);
+  host.appendChild(row0);
+
+  /* 6 个 CC 滑杆 */
+  MX_FIELDS.forEach(f => {
+    const row = document.createElement('div');
+    row.className = 'row';
+    const lb = document.createElement('label');
+    lb.textContent = f.name;
+    const rg = document.createElement('input');
+    rg.type = 'range'; rg.min = '0'; rg.max = '127';
+    const nm = document.createElement('input');
+    nm.type = 'number'; nm.min = '0'; nm.max = '127';
+    nm.style.width = '66px';
+    /* mode: 'drag' 拖动中（节流发） / 'commit' 松手（立即发） / 'silent' 只改界面 */
+    const apply = (v, mode) => {
+      v = Math.max(0, Math.min(127, v | 0));
+      rg.value = v; nm.value = v;
+      mxState[mxCur][f.key] = v;
+      mxUpdateRow(mxCur);
+      if (mode === 'silent') return Promise.resolve();
+      if (mode === 'drag'){ mxThrottle.push(f.cc, v, mxCur); return Promise.resolve(); }
+      // commit：节流里还挂着值就把它发掉（那就是最终值）；否则直接发
+      if (mxThrottle.flushNow()) return Promise.resolve();
+      return mxSend(f.cc, v, mxCur);   // 返回 Promise：测试/调用方可以 await
+    };
+    rg.addEventListener('input', () => apply(+rg.value, 'drag'));
+    rg.addEventListener('change', () => apply(+rg.value, 'commit'));
+    nm.addEventListener('change', () => apply(+nm.value, 'commit'));
+    mxCtl[f.key] = { set: apply, rg, nm };
+    row.appendChild(lb);
+    row.appendChild(rg);
+    row.appendChild(nm);
+    if (f.key === 'pan'){
+      const bt = document.createElement('button');
+      bt.className = 'mini';
+      bt.textContent = '居中';
+      bt.title = '声像回到正中间（CC10 = 64）';
+      bt.addEventListener('click', () => apply(64, 'commit'));
+      mxCtl.panBtn = bt;
+      row.appendChild(bt);
+    }
+    host.appendChild(row);
+  });
+}
+
+function mxLoad(ch){
+  mxCur = ch;
+  // 目标通道不在当前页时自动翻过去
+  const page = Math.floor(ch / MX_PAGE);
+  if (page !== mxPage){ mxPage = page; mxRenderTable(); }
+  const st = mxState[ch];
+  document.getElementById('mxCur').textContent = '当前编辑 CH' + (ch + 1);
+  if (mxCtl.prog) mxCtl.prog.value = String(st.prog);
+  MX_FIELDS.forEach(f => { if (mxCtl[f.key]) mxCtl[f.key].set(st[f.key], 'silent'); });
+  for (const tr of document.querySelectorAll('#mxBody tr')) {
+    if (tr.classList && tr.classList.toggle) tr.classList.toggle('on', +tr.dataset.mxch === ch);
+  }
+}
+
+function mxInit(){
+  const body = document.getElementById('mxBody');
+  if (!body) return;
+  document.getElementById('mxNote').textContent =
+    '点任意一行切换到该通道（同时把「MIDI 通道」也切过去）。';
+  // 填充「MIDI 通道」下拉：1–16
+  const chSel = el.midiCh;
+  if (chSel && chSel.tagName !== 'INPUT'){
+    chSel.innerHTML = '';
+    for (let i = 1; i <= 16; i++){
+      const o = document.createElement('option');
+      o.value = String(i);
+      o.textContent = 'CH ' + i;
+      chSel.appendChild(o);
+    }
+    chSel.value = String(currentChannel() + 1);
+  }
+
+  mxRenderTable();
+  mxBuildEdit();
+  mxLoad(currentChannel());      // 打开就对齐「MIDI 通道」，不一致会让人以为编辑的不是同一个
+
+  /* 前面模块发的 CC / Program Change 同步到混音台：
+     面板 3 换音色 → 音色列；面板 4 拖表情 → expr 列；预设恢复、一键演示同理。 */
+  mixerSyncHook = (bytes) => {
+    let chTouched = -1;
+    for (let i = 0; i + 1 < bytes.length; i++){
+      const st = bytes[i] & 0xF0, ch = bytes[i] & 0x0F;
+      if (st === 0xB0 && i + 2 < bytes.length){
+        const cc = bytes[i + 1] & 0x7F, val = bytes[i + 2] & 0x7F;
+        const f = MX_FIELDS.find(x => x.cc === cc);
+        if (f){ mxState[ch][f.key] = val; chTouched = ch; }
+        i += 2;
+      } else if (st === 0xC0 && i + 1 < bytes.length){
+        mxState[ch].prog = bytes[i + 1] & 0x7F;
+        chTouched = ch;
+        i += 1;
+      } else {
+        break;                    // 其他消息（音符/弯音/SysEx）不归混音台管
+      }
+    }
+    if (chTouched < 0) return;
+    mxUpdateRow(chTouched);
+    if (chTouched === mxCur) mxLoad(mxCur);   // 编辑区跟着走
+  };
+
+  /* 面板 2 切通道 → 混音台跟到那一页 */
+  el.midiCh.addEventListener('change', () => mxLoad(currentChannel()));
+
+
+  const pageBtn = (id, fn) => {
+    const b = document.getElementById(id);
+    if (b) b.addEventListener('click', fn);
+  };
+  pageBtn('mxPrev', () => { if (mxPage > 0){ mxPage--; mxRenderTable(); mxLoad(mxPage * MX_PAGE); } });
+  pageBtn('mxNext', () => {
+    if ((mxPage + 1) * MX_PAGE < MX_NCH){ mxPage++; mxRenderTable(); mxLoad(mxPage * MX_PAGE); }
+  });
+
+  body.addEventListener('click', e => {
+    const tr = (e.target && e.target.closest) ? e.target.closest('tr[data-mxch]') : null;
+    if (!tr) return;
+    const ch = +tr.dataset.mxch;
+    mxLoad(ch);
+    el.midiCh.value = String(ch + 1);          // 同步全局通道（下拉直接跟着变）
+  });
+
+  const allBtn = (id, fn) => {
+    const b = document.getElementById(id);
+    if (b) b.addEventListener('click', fn);
+  };
+  allBtn('mxAllVol',  async () => { for (let i = 0; i < MX_NCH; i++){ mxState[i].vol = 100;   mxUpdateRow(i); await mxSend(7, 100, i); } });
+  allBtn('mxAllPan',  async () => { for (let i = 0; i < MX_NCH; i++){ mxState[i].pan = 64;    mxUpdateRow(i); await mxSend(10, 64, i); } });
+  allBtn('mxAllExpr', async () => { for (let i = 0; i < MX_NCH; i++){ mxState[i].expr = 127;  mxUpdateRow(i); await mxSend(11, 127, i); } });
+  const fxAllCh = async (v) => {
+    for (const f of [{ k:'rev', cc:91 }, { k:'cho', cc:93 }, { k:'del', cc:94 }]) {
+      for (let i = 0; i < MX_NCH; i++){
+        mxState[i][f.k] = v; mxUpdateRow(i);
+        await mxSend(f.cc, v, i);
+      }
+    }
+    // 批量改完，把当前通道的滑杆同步过来（直接写控件，不依赖 mxLoad 的重建）
+    for (const f of [{ k:'rev' }, { k:'cho' }, { k:'del' }]){
+      if (mxCtl[f.k]) mxCtl[f.k].set(v, 'silent');
+    }
+  };
+  allBtn('mxAllFx',   () => fxAllCh(0));
+  allBtn('mxAllFxOn', () => fxAllCh(127));
+}
+
+  mxInit();                                   // 面板 15 混音台
+  refreshPmodeNote();                         // 要在 mxInit 之后：它会把混音台整组禁用/放开
+  syncBend('range');                          // 弯音初值 = 中心 8192
+  renderEnv();                                // 面板 12 的包络图
+  refreshSysexPreview();                      // 面板 14 的 SysEx 字节预览
+  setSustainUI(false);                        // 延音踏板初始是「松开」
+  try {
+    const savedLogH = parseFloat(localStorage.getItem(LOG_H_KEY));
+    if (isFinite(savedLogH) && savedLogH > 0) applyLogHeight(savedLogH);   // 记住上次拖的高度
+  } catch (_) { }
+  el.presetOut.textContent = '还没保存过';
+  refreshHeld();
+  refreshHoldHint();
+  refreshSeqStatus();
+  refreshCheckSummary();
+  doSelfTest(false);          // 页面一打开就先自证一遍判据（结果只看面板 10）
+  el.note.dispatchEvent(new Event('input'));
+
+  if (blocker){
+    logLine([], '当前环境连不了串口，原因见「1 · 串口连接」里的红色提示。', 'err');
+  }else{
+    logLine([], '就绪。点「1 · 串口连接」里的「连接串口」，在浏览器弹出的列表里选中你的 USB-TTL。', 'sys');
+  }
+  logLine([], '提示：按「发送音色」或直接点那 8 个音色按钮，都会连发 CC0 → CC32 → Program Change。', 'sys');
+  logLine([], '提示：没连串口也能拖滑杆 —— 发出的字节会写进日志并被「10 · 指令检查」核一遍（只是不真发）。', 'sys');
+  logLine([], '提示：面板 10–12、14 默认收起，点标题栏展开。', 'sys');
+})();
+</script>
+</body>
+</html>

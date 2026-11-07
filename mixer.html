@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>混音台</title>
+<style>
+  :root{
+    --bg:#0f1216; --panel:#171c23; --line:#2a3140; --fg:#d8dee9; --dim:#7c8698;
+    --acc:#4f8cff; --acc2:#2a5cb8; --ok:#3fbf7f; --warn:#ffb020; --err:#ff5f5f;
+    --mono:ui-monospace,SFMono-Regular,Consolas,"Courier New",monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+       font:14px/1.5 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+       display:flex;flex-direction:column;height:100vh;overflow:hidden}
+  header{flex:0 0 auto;display:flex;align-items:center;gap:12px;
+         padding:8px 14px;background:var(--panel);border-bottom:1px solid var(--line)}
+  header h1{margin:0;font-size:15px;font-weight:600;letter-spacing:.5px}
+  .grow{flex:1}
+  .status{font-size:12px;color:var(--dim);font-family:var(--mono)}
+  .status.on{color:var(--ok)}
+  main{flex:1 1 auto;overflow:auto;padding:12px 14px;display:flex;flex-direction:column;gap:12px}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
+  h2{margin:0 0 10px;font-size:13px;font-weight:600;color:var(--dim);letter-spacing:.5px}
+  button{background:#222a35;color:var(--fg);border:1px solid var(--line);border-radius:6px;
+         padding:5px 11px;font-size:13px;cursor:pointer;transition:.12s}
+  button:hover{border-color:var(--acc);color:#fff}
+  button:disabled{opacity:.35;cursor:not-allowed}
+  button.primary{background:var(--acc2);border-color:var(--acc)}
+  button.primary:hover{background:var(--acc)}
+  button.mini{padding:3px 8px;font-size:12px}
+
+  /* ---- 通道表 ---- */
+  table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:13px}
+  th,td{padding:4px 8px;text-align:right;border-bottom:1px solid #202632}
+  th:first-child,td:first-child{text-align:left;width:70px}
+  th{color:var(--dim);font-weight:500;font-size:12px;position:sticky;top:0;background:var(--panel)}
+  tbody tr{cursor:pointer}
+  tbody tr:hover{background:#1e2530}
+  tbody tr.on{background:#1d2a44}
+  tbody tr.on td:first-child{color:var(--acc);font-weight:600}
+  tbody tr.on td:first-child::before{content:"\25CF ";font-size:10px}
+  td.mute{color:#4a5262}
+
+  /* ---- 编辑区 ---- */
+  .row{display:flex;align-items:center;gap:10px;margin:5px 0}
+  .row label{width:96px;color:var(--dim);font-size:12px;flex:0 0 auto}
+  .row input[type=range]{flex:1;min-width:120px;accent-color:var(--acc)}
+  .row select{background:#0d1117;color:var(--fg);border:1px solid var(--line);
+             border-radius:5px;padding:3px 7px;font:13px var(--mono);min-width:150px;outline:none}
+  .row select:focus{border-color:var(--acc)}
+  td.tmb{font-family:inherit;font-size:12.5px;text-align:left;color:#aab4c8}
+  .row .num{width:56px;background:#0d1117;color:var(--fg);border:1px solid var(--line);
+            border-radius:4px;padding:2px 6px;font-family:var(--mono);font-size:12px;text-align:right}
+  .row .val{width:34px;text-align:right;font-family:var(--mono);font-size:12px;color:var(--dim)}
+  .title-line{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .title-line b{color:var(--acc);font-family:var(--mono)}
+  .sep{border:0;border-top:1px solid var(--line);margin:12px 0}
+  .btns{display:flex;flex-wrap:wrap;gap:8px}
+  .hint{color:var(--dim);font-size:12px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>混音台</h1>
+  <button id="btnConn" class="primary">连接串口</button>
+  <span class="status" id="stat">未连接</span>
+  <span class="grow"></span>
+  <span class="status" id="rate">31250</span>
+</header>
+
+<main>
+  <section>
+    <h2>通道</h2>
+    <table>
+      <thead><tr>
+        <th>通道</th><th>音色</th><th>音量</th><th>声像</th><th>表情</th><th>混响</th><th>合唱</th><th>延迟</th>
+      </tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </section>
+
+  <section>
+    <div class="title-line">当前编辑 <b id="curName">CH1</b></div>
+    <div id="editRows"></div>
+  </section>
+
+  <section>
+    <h2>全部通道</h2>
+    <div class="btns">
+      <button id="allVol" class="mini">音量 = 100</button>
+      <button id="allPan" class="mini">声像居中</button>
+      <button id="allExpr" class="mini">表情 = 127</button>
+      <button id="allFx" class="mini">效果 = 0</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>收尾</h2>
+    <div class="btns">
+      <button id="btn120">CC120 断音</button>
+      <button id="btn123">CC123 关音</button>
+    </div>
+    <hr class="sep">
+    <div class="row">
+      <label>主音量</label>
+      <input type="range" id="mvol" min="0" max="7" value="7">
+      <span class="val" id="mvolVal">0 dB</span>
+      <button id="btnMvol" class="mini">发送</button>
+    </div>
+  </section>
+</main>
+
+<script>
+'use strict';
+
+/* ============ 参数表 ============ */
+const FIELDS = [
+  { key:'vol',  cc:7,  name:'音量' },
+  { key:'pan',  cc:10, name:'声像' },
+  { key:'expr', cc:11, name:'表情' },
+  { key:'rev',  cc:91, name:'混响' },
+  { key:'cho',  cc:93, name:'合唱' },
+  { key:'del',  cc:94, name:'延迟' },
+];
+const NCH = 16;
+/* Program Change 0~7 → 音色槽 0~7（timbre_map.v 恒等映射；>=8 也按低 3 位回绕） */
+const TIMBRES = ['电钢琴','吉他','管风琴','长笛','Pad','铜管','弦乐','拨弦'];
+const DEF = { prog:0, vol:100, pan:64, expr:127, rev:40, cho:0, del:0 };
+
+/* ============ 状态 ============ */
+const state = Array.from({length:NCH}, () => ({...DEF}));
+let cur = 0;
+let writer = null;
+let port = null;
+
+/* ============ DOM ============ */
+const el = id => document.getElementById(id);
+const tbody = el('tbody');
+const statEl = el('stat');
+
+/* ============ 串口 ============ */
+async function connect(){
+  if (!('serial' in navigator)){ statEl.textContent = '此浏览器不支持 Web Serial'; return; }
+  try{
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate:31250, dataBits:8, stopBits:1, parity:'none', flowControl:'none' });
+    writer = port.writable.getWriter();
+    statEl.textContent = '已连接';
+    statEl.classList.add('on');
+    el('btnConn').textContent = '断开';
+  }catch(e){
+    if (e && e.name === 'NotFoundError') statEl.textContent = '没有选中设备';
+    else statEl.textContent = '连接失败：' + (e && e.message ? e.message : e);
+  }
+}
+
+async function disconnect(){
+  try{ if (writer){ writer.releaseLock(); writer = null; } }catch(e){}
+  try{ if (port){ await port.close(); port = null; } }catch(e){}
+  statEl.textContent = '未连接';
+  statEl.classList.remove('on');
+  el('btnConn').textContent = '连接串口';
+}
+
+async function write(bytes){
+  if (!writer) return false;
+  try{ await writer.write(new Uint8Array(bytes)); return true; }
+  catch(e){ return false; }
+}
+
+/* ============ 发送 ============ */
+function chByte(){ return 0xB0 | (cur & 0x0F); }
+
+function sendCC(cc, val){
+  return write([chByte(), cc & 0x7F, val & 0x7F]);
+}
+
+/* 节流：拖动滑杆时每 40 ms 最多发一次，松手补发 */
+function makeThrottle(ms){
+  let last = 0, timer = null, pending = null;
+  function flush(){
+    timer = null;
+    if (!pending) return;
+    sendCC(pending.cc, pending.val);
+    pending = null;
+    last = performance.now();
+  }
+  return {
+    push(cc, val){
+      pending = { cc, val };
+      const now = performance.now();
+      if (now - last >= ms) flush();
+      else if (!timer) timer = setTimeout(flush, ms - (now - last));
+    },
+    flushNow(){
+      if (timer){ clearTimeout(timer); timer = null; }
+      if (pending){ sendCC(pending.cc, pending.val); pending = null; }
+      last = performance.now();
+    }
+  };
+}
+const ccThrottle = makeThrottle(40);
+
+/* 主音量 SysEx：F0 7F 7F 04 01 ll mm F7
+   固件只取 14 位值的高 3 位（vol_sh = 7 − v[13:11]），所以这里按档位 n → n<<11 */
+function sendMasterVol(level){
+  const v = (level & 0x07) << 11;
+  write([0xF0, 0x7F, 0x7F, 0x04, 0x01, v & 0x7F, (v >> 7) & 0x7F, 0xF7]);
+}
+
+/* ============ 表格 ============ */
+function renderTable(){
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < NCH; i++){
+    const tr = document.createElement('tr');
+    tr.dataset.ch = String(i);
+    if (i === cur) tr.className = 'on';
+    const s = state[i];
+    tr.innerHTML = '<td>CH' + (i + 1) + '</td>' +
+      '<td class="tmb">' + s.prog + ' ' + TIMBRES[s.prog & 7] + '</td>' +
+      FIELDS.map(f => '<td>' + s[f.key] + '</td>').join('');
+    frag.appendChild(tr);
+  }
+  tbody.replaceChildren(frag);
+}
+
+function updateRow(i){
+  const tr = tbody.querySelector('tr[data-ch="' + i + '"]');
+  if (!tr) return;
+  const s = state[i];
+  const tds = tr.children;
+  tds[1].textContent = s.prog + ' ' + TIMBRES[s.prog & 7];
+  FIELDS.forEach((f, k) => { tds[k + 2].textContent = s[f.key]; });
+}
+
+/* ============ 编辑区 ============ */
+const ctls = {};
+
+function buildEdit(){
+  const host = el('editRows');
+  host.replaceChildren();
+
+  /* 音色（Program Change）—— 不是 CC，所以单独一行下拉 */
+  {
+    const row = document.createElement('div');
+    row.className = 'row';
+    const lb = document.createElement('label');
+    lb.textContent = '音色 PC';
+    const se = document.createElement('select');
+    TIMBRES.forEach((t, i) => {
+      const o = document.createElement('option');
+      o.value = String(i); o.textContent = i + ' ' + t;
+      se.appendChild(o);
+    });
+    se.addEventListener('change', () => {
+      const p = +se.value;
+      state[cur].prog = p;
+      updateRow(cur);
+      write([0xC0 | cur, p & 0x7F]);
+    });
+    ctls.prog = { sel: se };
+    row.append(lb, se);
+    host.appendChild(row);
+  }
+
+  FIELDS.forEach(f => {
+    const row = document.createElement('div');
+    row.className = 'row';
+
+    const lb = document.createElement('label');
+    lb.textContent = f.name + ' CC' + f.cc;
+
+    const rg = document.createElement('input');
+    rg.type = 'range'; rg.min = '0'; rg.max = '127';
+
+    const nm = document.createElement('input');
+    nm.type = 'number'; nm.min = '0'; nm.max = '127'; nm.className = 'num';
+
+    row.append(lb, rg, nm);
+
+    if (f.cc === 10){
+      const bt = document.createElement('button');
+      bt.className = 'mini'; bt.textContent = '居中';
+      bt.addEventListener('click', () => {
+        const v = 64;
+        state[cur].pan = v; setCtl('pan', v);
+        ccThrottle.push(10, v); ccThrottle.flushNow();
+        updateRow(cur);
+      });
+      row.appendChild(bt);
+    }
+
+    const set = v => { rg.value = v; nm.value = v; };
+    const commit = v => {
+      v = Math.max(0, Math.min(127, v | 0));
+      set(v);
+      state[cur][f.key] = v;
+      updateRow(cur);
+      ccThrottle.push(f.cc, v);
+    };
+    rg.addEventListener('input', () => commit(+rg.value));
+    rg.addEventListener('change', async () => { commit(+rg.value); ccThrottle.flushNow(); });
+    nm.addEventListener('change', () => { commit(+nm.value); ccThrottle.flushNow(); });
+
+    ctls[f.key] = { set, el: rg };
+    host.appendChild(row);
+  });
+}
+
+function setCtl(key, v){ if (ctls[key]) ctls[key].set(v); }
+
+function loadChannel(i){
+  cur = i;
+  el('curName').textContent = 'CH' + (i + 1);
+  const s = state[i];
+  FIELDS.forEach(f => setCtl(f.key, s[f.key]));
+  if (ctls.prog) ctls.prog.sel.value = String(s.prog);
+  for (const tr of tbody.children) tr.classList.toggle('on', +tr.dataset.ch === i);
+}
+
+/* ============ 事件 ============ */
+el('btnConn').addEventListener('click', async () => {
+  if (writer) await disconnect(); else await connect();
+});
+
+tbody.addEventListener('click', e => {
+  const tr = e.target.closest('tr[data-ch]');
+  if (!tr) return;
+  loadChannel(+tr.dataset.ch);
+});
+
+/* 全局：对 16 个通道各发一遍 */
+async function allChannels(cc, val, key){
+  for (let i = 0; i < NCH; i++){
+    state[i][key] = val;
+    updateRow(i);
+  }
+  for (let i = 0; i < NCH; i++){
+    if (!writer) break;
+    await write([0xB0 | i, cc, val]);
+  }
+}
+
+el('allVol').addEventListener('click', () => allChannels(7, 100, 'vol'));
+el('allPan').addEventListener('click', () => allChannels(10, 64, 'pan'));
+el('allExpr').addEventListener('click', () => allChannels(11, 127, 'expr'));
+el('allFx').addEventListener('click', async () => {
+  for (const cc of [91, 93, 94]){
+    const key = cc === 91 ? 'rev' : cc === 93 ? 'cho' : 'del';
+    await allChannels(cc, 0, key);
+  }
+});
+
+el('btn120').addEventListener('click', () => sendCC(120, 0));
+el('btn123').addEventListener('click', () => sendCC(123, 0));
+
+el('mvol').addEventListener('input', () => {
+  const n = +el('mvol').value;
+  el('mvolVal').textContent = (n === 7 ? '0' : '-' + (7 - n) * 6) + ' dB';
+});
+el('btnMvol').addEventListener('click', () => {
+  sendMasterVol(+el('mvol').value);
+});
+
+/* ============ 启动 ============ */
+renderTable();
+buildEdit();
+loadChannel(0);
+el('mvolVal').textContent = '0 dB';
+</script>
+</body>
+</html>

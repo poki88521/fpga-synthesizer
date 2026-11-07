@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>音色渲染器</title>
+<style>
+  :root{
+    --bg:#0f1216; --panel:#171c23; --line:#2a3140; --fg:#d8dee9; --dim:#7c8698;
+    --acc:#4f8cff; --acc2:#2a5cb8; --ok:#3fbf7f; --mono:ui-monospace,SFMono-Regular,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+       font:14px/1.5 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+       display:flex;flex-direction:column;height:100vh;overflow:hidden}
+  header{flex:0 0 auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+         padding:8px 14px;background:var(--panel);border-bottom:1px solid var(--line)}
+  header h1{margin:0;font-size:16px;font-weight:600}
+  .grow{flex:1}
+  .st{font-size:12px;color:var(--dim);font-family:var(--mono)}
+  .st.ok{color:var(--ok)}
+  button{background:#222a35;color:var(--fg);border:1px solid var(--line);border-radius:6px;
+         padding:7px 13px;font-size:13px;cursor:pointer;transition:.12s}
+  button:hover{border-color:var(--acc);color:#fff}
+  button:disabled{opacity:.35;cursor:not-allowed}
+  button.primary{background:var(--acc2);border-color:var(--acc)}
+  button.primary:hover{background:var(--acc)}
+  main{flex:1 1 auto;overflow:auto;padding:12px 14px;display:flex;flex-direction:column;gap:12px}
+  .tabs{display:flex;gap:6px;flex-wrap:wrap}
+  .tabs button{min-width:84px}
+  .tabs button.on{background:var(--acc2);border-color:var(--acc);color:#fff}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
+  .grp{margin-bottom:10px}
+  .grp:last-child{margin-bottom:0}
+  .grp h3{margin:0 0 6px;font-size:13px;font-weight:600;color:#9aa6bb;letter-spacing:.5px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:7px 24px}
+  .row{display:flex;align-items:center;gap:8px}
+  .row label{width:92px;flex:0 0 auto;color:var(--dim);font-size:13px}
+  .row input[type=range]{flex:1;min-width:80px;accent-color:var(--acc)}
+  .row input.num,.row select{background:#0d1117;color:var(--fg);
+       border:1px solid var(--line);border-radius:4px;padding:2px 5px;
+       font-family:var(--mono);font-size:13px;outline:none}
+  .row input.num{width:74px}
+  .row select{width:116px}
+  .row input.num:focus,.row select:focus{border-color:var(--acc)}
+  .info{font-family:var(--mono);font-size:13px;color:var(--dim);margin-top:10px}
+  .info b{color:var(--fg);font-weight:500}
+  canvas{display:block;width:100%;height:110px;background:#0d1117;
+         border:1px solid var(--line);border-radius:8px}
+  #adsr{height:170px}
+  .grp h3 button.mini{padding:2px 9px;font-size:12px;font-weight:400;margin-left:8px;vertical-align:1px}
+  .cap{font-size:12px;color:var(--dim);margin-bottom:6px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>音色渲染器</h1>
+  <span class="st" id="wtState">波表未载入</span>
+  <span class="grow"></span>
+  <button id="btnPlay" class="primary" disabled>试听</button>
+  <button id="btnAB" disabled>A/B 对比</button>
+  <button id="btnWav" disabled>导出 WAV</button>
+</header>
+
+<main>
+  <section>
+    <div class="tabs" id="tabs"></div>
+  </section>
+
+  <section>
+    <div class="grp"><h3>滤波</h3><div class="grid" id="gFilter"></div></div>
+    <div class="grp"><h3>包络 <button id="btnCurve" class="mini">切到线性</button></h3><div class="grid" id="gEnv"></div></div>
+    <div class="grp"><h3>其他</h3><div class="grid" id="gMisc"></div></div>
+    <div class="info" id="info"></div>
+  </section>
+
+  <section>
+    <div class="cap">包络（门控 1.0 s ｜ 总长 2.2 s）</div>
+    <canvas id="adsr" width="1200" height="150"></canvas>
+  </section>
+
+  <section>
+    <div class="cap">波形（前 45 ms）</div>
+    <canvas id="wave" width="1200" height="110"></canvas>
+  </section>
+</main>
+
+<input type="file" id="fileIn" accept=".hex,.txt" style="display:none">
+
+<script>
+'use strict';
+
+const FS = 48000;
+const NSLOT = 8;
+const NPTS = 2048;
+const MAX24 = 8388607, MIN24 = -8388608;
+
+/* ============ 音色参数模型（字段编号对齐未来 SysEx：0=f 1=q 2=type 3=curve 4=a 5=d 6=s 7=r 8=vca 9=wave）============ */
+/* 线性 / 指数两套 a·d·r；指数值取自《音色参数表》§指数化方案（时长与线性基本一致） */
+const ADSR_LIN = [[2,1,1],[341,3,2],[1,1,1],[17,3,2],[11,1,2],[137,7,4],[34,3,2],[682,14,1]];
+const ADSR_EXP = [[9,17,6],[1569,18,38],[5,22,6],[78,35,15],[51,14,14],[630,83,30],[156,35,15],[3137,64,1]];
+
+const DEFAULTS = [
+  { wave:0, f:30000, q:22000, type:0, curve:1, a:9,    d:17, s:24000, r:6,  vca:32768 },
+  { wave:1, f:16384, q:16384, type:0, curve:1, a:1569, d:18, s:8000,  r:38, vca:32768 },
+  { wave:2, f:8480,  q:22000, type:0, curve:1, a:5,    d:22, s:26000, r:6,  vca:32768 },
+  { wave:3, f:5340,  q:12000, type:1, curve:1, a:78,   d:35, s:20000, r:15, vca:32768 },
+  { wave:4, f:12540, q:20000, type:0, curve:1, a:51,   d:14, s:22000, r:14, vca:33000 },
+  { wave:5, f:16384, q:8000,  type:1, curve:1, a:630,  d:83, s:20000, r:30, vca:42000 },
+  { wave:6, f:4277,  q:4000,  type:0, curve:1, a:156,  d:35, s:20000, r:15, vca:32768 },
+  { wave:7, f:23170, q:16384, type:0, curve:1, a:3137, d:64, s:0,     r:1,  vca:32768 },
+];
+const SLOT_NAME = ['电钢琴','吉他','管风琴','长笛','Pad','铜管','弦乐','拨弦'];
+const slots = DEFAULTS.map(o => ({...o}));
+let cur = 0;
+
+/* 参数定义：key / 标签 / 最小 / 最大 / 步进 */
+const PARAMS = [
+  { k:'f',     n:'截止 f',   min:0,    max:32767, step:1 },
+  { k:'q',     n:'谐振 q',   min:0,    max:32767, step:1 },
+  { k:'a',     n:'起音 a',   min:1,    max:4000,  step:1 },
+  { k:'d',     n:'衰减 d',   min:1,    max:200,   step:1 },
+  { k:'s',     n:'持续 s',   min:0,    max:32767, step:1 },
+  { k:'r',     n:'释放 r',   min:1,    max:200,   step:1 },
+  { k:'vca',   n:'音量 vca', min:0,    max:65535, step:1 },
+];
+const SELECTS = [
+  { k:'type',  n:'滤波型',   opts:[['0','低通 LP'],['1','带通 BP'],['2','高通 HP']] },
+  { k:'curve', n:'包络曲线', opts:[['0','线性'],['1','指数']] },
+];
+
+/* ============ 波表 ============ */
+
+let table = null;               // Int16Array(NWAVE*2048)
+
+function parseHex(text, slots){
+  const n = slots * NPTS;
+  const lines = text.split(/\r?\n/).filter(l => l.trim().length);
+  if (lines.length < n) throw new Error('行数不足：' + lines.length + '（需要 ' + n + '）');
+  const t = new Int16Array(n);
+  for (let i = 0; i < n; i++){
+    let v = parseInt(lines[i].trim(), 16);
+    if (isNaN(v)) throw new Error('第 ' + (i+1) + ' 行不是十六进制');
+    v &= 0xFFFF;
+    t[i] = v >= 32768 ? v - 65536 : v;
+  }
+  return t;
+}
+async function loadTable(){
+  const st = document.getElementById('wtState');
+  try{
+    const r = await fetch('wave_table.hex');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    table = parseHex(await r.text(), NSLOT);
+    st.textContent = '波表已载入';
+    st.classList.add('ok');
+    setEnabled(true);
+    redraw();
+  }catch(e){
+    st.textContent = '波表载入失败，请手动选择 wave_table.hex';
+    document.getElementById('fileIn').click();
+  }
+}
+
+function setEnabled(on){
+  for (const id of ['btnPlay','btnAB','btnWav']) document.getElementById(id).disabled = !on;
+}
+
+/* ============ 渲染 ============ */
+const CC74 = 64, CC71 = 64;   // 试听时不做 CC 调制
+
+/* ============ 包络（与 adsr_vca.v 逐位对齐）============
+   curve=0 线性：attack +a、decay −d、release −r
+   curve=1 指数：步长 = (step×gap)>>15，且**至少为 1**（RTL 里 att_inc1/dec_dec1/rel_dec1 都有这个钳位）
+   阈值同样按 RTL：env+step >= 32767 才算到达；env <= 目标+step 才算落定 */
+const MAXE = 32767;
+function buildEnv(p, gateN, N){
+  const env = new Uint16Array(N);
+  const expOn = p.curve === 1;
+  let e = 0, st = 1;                        // 1=ATTACK 2=DECAY 3=SUSTAIN 4=RELEASE
+  for (let i = 0; i < N; i++){
+    const gate = i < gateN;
+    if (st === 1){                          // ATTACK
+      if (expOn){
+        let inc = Math.floor(p.a * (MAXE - e) / 32768); if (inc === 0) inc = 1;
+        if (e + inc >= MAXE){ e = MAXE; st = 2; } else e += inc;
+      } else {
+        if (e + p.a >= MAXE){ e = MAXE; st = 2; } else e += p.a;
+      }
+    } else if (st === 2){                   // DECAY
+      if (expOn){
+        const gap = e > p.s ? e - p.s : 0;
+        let dec = Math.floor(p.d * gap / 32768); if (dec === 0) dec = 1;
+        if (e <= p.s + dec){ e = p.s; st = 3; } else e -= dec;
+      } else {
+        if (e <= p.s + p.d){ e = p.s; st = 3; } else e -= p.d;
+      }
+    } else if (st === 3){                   // SUSTAIN
+      if (!gate) st = 4;
+    } else if (st === 4){                   // RELEASE
+      if (expOn){
+        const dec = Math.max(1, Math.floor(p.r * e / 32768));
+        if (e <= dec){ e = 0; st = 0; } else e -= dec;
+      } else {
+        if (e <= p.r){ e = 0; st = 0; } else e -= p.r;
+      }
+    }
+    env[i] = e;
+  }
+  return env;
+}
+
+function renderSlot(slotIndex, opts){
+  const p = slots[slotIndex];
+  const o = opts || {};
+  const freq = o.freq || 261.6256;
+  const vel  = (o.vel === undefined) ? 100 : o.vel;
+  const gateSec  = (o.gate  === undefined) ? 1.0 : o.gate;
+  const totalSec = (o.total === undefined) ? 2.2 : o.total;
+
+  const N = Math.round(totalSec * FS);
+  const gateN = Math.round(gateSec * FS);
+  const out = new Float32Array(N);
+  if (!table) return out;
+
+  const base = p.wave * NPTS;
+  const step = Math.round(freq / FS * 4294967296) >>> 0;
+
+  const f = Math.max(0, Math.min(32767, p.f + ((CC74 - 64) << 8)));
+  const q = Math.max(0, Math.min(32767, p.q - ((CC71 - 64) << 8)));
+  const velGain = vel * vel;
+  const gt = Math.floor(velGain * p.vca / 32768);
+
+  let phase = 0, low = 0, band = 0;
+  const env = buildEnv(p, gateN, N);        // 包络先算好；试听与曲线图共用同一份逻辑
+
+  for (let i = 0; i < N; i++){
+    /* --- DDS + 线性插值 --- */
+    phase = (phase + step) >>> 0;
+    const idx  = phase >>> 21;
+    const frac = (phase >>> 10) & 0x7FF;
+    const s0 = table[base + idx];
+    const s1 = table[base + ((idx + 1) & (NPTS - 1))];
+    const wave = s0 + (((s1 - s0) * frac) >> 11);
+
+    /* --- SVF（24 位定点）--- */
+    const in24 = wave << 8;
+    low  += Math.floor(f * band / 32768);
+    let high = in24 - low - Math.floor(q * band / 32768);
+    band += Math.floor(f * high / 32768);
+    if (low  > MAX24) low  = MAX24; else if (low  < MIN24) low  = MIN24;
+    if (band > MAX24) band = MAX24; else if (band < MIN24) band = MIN24;
+    if (high > MAX24) high = MAX24; else if (high < MIN24) high = MIN24;
+    const svf = (p.type === 0) ? low : (p.type === 1) ? band : high;
+
+    /* --- VCA --- */
+    let v = Math.floor(svf * env[i] / 32768);
+    v = Math.floor(v * gt / 32768);
+    if (v > MAX24) v = MAX24; else if (v < MIN24) v = MIN24;
+    out[i] = v / 8388608;
+  }
+  return out;
+}
+
+/* ============ 播放 ============ */
+let actx = null;
+function ctx(){
+  if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)({sampleRate:48000});
+  return actx;
+}
+function playBuffer(data){
+  const c = ctx();
+  const buf = c.createBuffer(1, data.length, FS);
+  buf.copyToChannel(data, 0);
+  const src = c.createBufferSource();
+  src.buffer = buf;
+  src.connect(c.destination);
+  src.start();
+  return buf.duration;
+}
+async function playCurrent(){
+  if (!table) return;
+  const data = renderSlot(cur, {});
+  playBuffer(data);
+  redraw();
+}
+let abRunning = false;
+async function playAB(){
+  if (!table || abRunning) return;
+  abRunning = true;
+  const btn = document.getElementById('btnAB');
+  btn.disabled = true;
+  for (let i = 0; i < NSLOT; i++){
+    document.querySelectorAll('.tabs button')[i].classList.add('on');
+    const d = renderSlot(i, {total:1.2});
+    playBuffer(d);
+    await new Promise(r => setTimeout(r, 1200 + 400));
+  }
+  document.querySelectorAll('.tabs button')[cur].classList.add('on');
+  btn.disabled = false;
+  abRunning = false;
+}
+
+/* ============ WAV 导出 ============ */
+function toWav(data){
+  const n = data.length;
+  const buf = new ArrayBuffer(44 + n * 2);
+  const v = new DataView(buf);
+  const ws = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  ws(0,'RIFF'); v.setUint32(4, 36 + n*2, true); ws(8,'WAVE');
+  ws(12,'fmt '); v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+  v.setUint32(24,FS,true); v.setUint32(28,FS*2,true); v.setUint16(32,2,true); v.setUint16(34,16,true);
+  ws(36,'data'); v.setUint32(40, n*2, true);
+  for (let i = 0; i < n; i++){
+    let x = Math.max(-1, Math.min(1, data[i]));
+    v.setInt16(44 + i*2, Math.round(x * 32767), true);
+  }
+  return new Blob([buf], {type:'audio/wav'});
+}
+function exportWav(){
+  if (!table) return;
+  const data = renderSlot(cur, {});
+  const url = URL.createObjectURL(toWav(data));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'timbre_' + cur + '_' + SLOT_NAME[cur] + '.wav';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+/* ============ 界面 ============ */
+function buildTabs(){
+  const host = document.getElementById('tabs');
+  for (let i = 0; i < NSLOT; i++){
+    const b = document.createElement('button');
+    b.textContent = i + ' ' + SLOT_NAME[i];
+    if (i === cur) b.className = 'on';
+    b.addEventListener('click', () => {
+      cur = i;
+      for (const x of host.children) x.classList.remove('on');
+      b.classList.add('on');
+      syncAll();
+      redraw();
+    });
+    host.appendChild(b);
+  }
+}
+
+const ctl = {};
+const GROUP_OF = { f:'gFilter', q:'gFilter', a:'gEnv', d:'gEnv', s:'gEnv', r:'gEnv',
+                   vca:'gMisc', type:'gMisc', curve:'gMisc' };
+function hostOf(k){ return document.getElementById(GROUP_OF[k] || 'gMisc'); }
+
+function buildParams(){
+  for (const d of PARAMS){
+    const row = document.createElement('div');
+    row.className = 'row';
+    const lb = document.createElement('label');
+    lb.textContent = d.n;
+    const rg = document.createElement('input');
+    rg.type = 'range'; rg.min = d.min; rg.max = d.max; rg.step = d.step;
+    const nm = document.createElement('input');
+    nm.type = 'text';                      // 支持 0x 十六进制
+    nm.className = 'num';
+    const apply = (v) => {
+      v = Math.max(d.min, Math.min(d.max, v | 0));
+      rg.value = v;
+      nm.value = String(v);
+      slots[cur][d.k] = v;
+      updateInfo();
+      redraw();
+    };
+    rg.addEventListener('input', () => apply(+rg.value));
+    nm.addEventListener('change', () => {
+      const raw = nm.value.trim();
+      const v = /^0x/i.test(raw) ? parseInt(raw, 16) : parseInt(raw, 10);
+      apply(isNaN(v) ? slots[cur][d.k] : v);
+    });
+    ctl[d.k] = { rg, nm, apply, d };
+    row.append(lb, rg, nm);
+    hostOf(d.k).appendChild(row);
+  }
+  for (const d of SELECTS){
+    const row = document.createElement('div');
+    row.className = 'row';
+    const lb = document.createElement('label');
+    lb.textContent = d.n;
+    const se = document.createElement('select');
+    for (const [v, t] of d.opts){
+      const op = document.createElement('option');
+      op.value = v; op.textContent = t;
+      se.appendChild(op);
+    }
+    se.addEventListener('change', () => {
+      slots[cur][d.k] = +se.value;
+      updateInfo(); redraw();
+    });
+    ctl[d.k] = { sel: se };
+    row.append(lb, se);
+    hostOf(d.k).appendChild(row);
+  }
+}
+
+function syncAll(){
+  const p = slots[cur];
+  for (const d of PARAMS){
+    const c = ctl[d.k];
+    c.rg.value = p[d.k];
+    c.nm.value = String(p[d.k]);
+  }
+  for (const d of SELECTS) ctl[d.k].sel.value = String(p[d.k]);
+  updateInfo();
+  curveLabel();
+}
+
+function updateInfo(){
+  const p = slots[cur];
+  /* 线性：走完全程 32767/step 采样；指数：衰减到 ~1% 需 4.6τ，τ = 32768/step 采样 */
+  const K = (p.curve === 1) ? 4.6 * 32768 : 32767;
+  const aMs = K / p.a / FS * 1000;
+  const rMs = K / p.r / FS * 1000;
+  document.getElementById('info').innerHTML =
+    '槽 <b>' + cur + '</b> ｜ ' +
+    (p.curve === 1 ? '指数' : '线性') + ' ｜ ' +
+    '起音 <b>' + aMs.toFixed(aMs < 10 ? 1 : 0) + ' ms</b> ｜ ' +
+    '释放 <b>' + rMs.toFixed(rMs < 100 ? 1 : 0) + ' ms</b> ｜ ' +
+    '持续 <b>' + (p.s / 32767 * 100).toFixed(0) + '%</b>';
+}
+
+/* 线性 / 指数 一键切换（a·d·r 一起换，时长基本不变） */
+function curveLabel(){
+  const b = document.getElementById('btnCurve');
+  if (b) b.textContent = slots[cur].curve === 1 ? '切到线性' : '切到指数';
+}
+
+/* 高 DPI：canvas 的像素尺寸按设备像素比放大，绘制坐标仍用 CSS 像素，字就不会糊 */
+function fitCanvas(cv){
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.max(1, Math.round(cv.clientWidth));
+  const h = Math.max(1, Math.round(cv.clientHeight));
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)){
+    cv.width  = Math.round(w * dpr);
+    cv.height = Math.round(h * dpr);
+  }
+  const c2 = cv.getContext('2d');
+  c2.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { c2, W: w, H: h };
+}
+
+/* 波形预览：画前 45 ms 的输出 */
+function drawWave(){
+  const { c2, W, H } = fitCanvas(document.getElementById('wave'));
+  c2.clearRect(0, 0, W, H);
+  c2.strokeStyle = '#2a3140'; c2.lineWidth = 1;
+  c2.beginPath(); c2.moveTo(0, H/2); c2.lineTo(W, H/2); c2.stroke();
+  if (!table) return;
+  const d = renderSlot(cur, { total: 0.045 });
+  c2.strokeStyle = '#4f8cff'; c2.lineWidth = 1.4; c2.beginPath();
+  for (let x = 0; x < W; x++){
+    const i = Math.round(x / (W - 1) * (d.length - 1));
+    const y = H/2 - d[i] * H * 0.45;
+    x ? c2.lineTo(x, y) : c2.moveTo(x, y);
+  }
+  c2.stroke();
+}
+
+/* ADSR 曲线：直接用 buildEnv 算出来的包络画，和试听完全同源 */
+const VIEW_GATE = 1.0, VIEW_TOTAL = 2.2;
+function drawAdsr(){
+  const { c2, W, H } = fitCanvas(document.getElementById('adsr'));
+  c2.clearRect(0, 0, W, H);
+  const padL = 40, padR = 10, padT = 12, padB = 18;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const X = t => padL + t / VIEW_TOTAL * plotW;
+  const Y = v => padT + plotH * (1 - v / MAXE);
+
+  c2.font = '12px system-ui, sans-serif';
+  c2.textBaseline = 'middle';
+
+  /* 横向电平网格：100 / 75 / 50 / 25 / 0% */
+  c2.lineWidth = 1;
+  for (let k = 0; k <= 4; k++){
+    const y = padT + plotH * k / 4;
+    c2.strokeStyle = '#202632';
+    c2.beginPath(); c2.moveTo(padL, y); c2.lineTo(W - padR, y); c2.stroke();
+    c2.fillStyle = '#5d667a'; c2.textAlign = 'right';
+    c2.fillText((100 - k * 25) + '%', padL - 5, y);
+  }
+
+  /* 纵向时间刻度：每 0.5 s 一条，带秒数标签 */
+  c2.textAlign = 'center';
+  for (let t = 0; t <= VIEW_TOTAL + 1e-6; t += 0.5){
+    const x = X(t);
+    c2.strokeStyle = '#202632';
+    c2.beginPath(); c2.moveTo(x, padT); c2.lineTo(x, padT + plotH); c2.stroke();
+    c2.fillStyle = '#5d667a';
+    c2.fillText(t.toFixed(t % 1 ? 1 : 0), x, H - padB / 2 - 1);
+  }
+
+  if (!table) return;
+
+  const N = Math.round(VIEW_TOTAL * FS);
+  const gateN = Math.round(VIEW_GATE * FS);
+  const env = buildEnv(slots[cur], gateN, N);
+
+  /* 松键位置 */
+  const xg = X(VIEW_GATE);
+  c2.strokeStyle = '#ffb020'; c2.setLineDash([4, 4]);
+  c2.beginPath(); c2.moveTo(xg, padT); c2.lineTo(xg, padT + plotH); c2.stroke();
+  c2.setLineDash([]);
+  c2.fillStyle = '#ffb020'; c2.textAlign = 'left';
+  c2.fillText('松键', xg + 4, padT + 8);
+
+  /* 包络曲线 */
+  c2.strokeStyle = '#4f8cff'; c2.lineWidth = 1.8; c2.beginPath();
+  for (let x = 0; x <= plotW; x++){
+    const i = Math.min(N - 1, Math.round(x / plotW * (N - 1)));
+    const px = padL + x, py = Y(env[i]);
+    x ? c2.lineTo(px, py) : c2.moveTo(px, py);
+  }
+  c2.stroke();
+}
+
+function redraw(){ drawWave(); drawAdsr(); }
+
+document.getElementById('btnPlay').addEventListener('click', playCurrent);
+document.getElementById('btnAB').addEventListener('click', playAB);
+document.getElementById('btnWav').addEventListener('click', exportWav);
+document.getElementById('btnCurve').addEventListener('click', () => {
+  const toExp = slots[cur].curve !== 1;
+  const v = toExp ? ADSR_EXP[cur] : ADSR_LIN[cur];
+  slots[cur].curve = toExp ? 1 : 0;
+  slots[cur].a = v[0]; slots[cur].d = v[1]; slots[cur].r = v[2];
+  syncAll(); redraw();
+});
+document.getElementById('fileIn').addEventListener('change', async e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const st = document.getElementById('wtState');
+  try{
+    table = parseHex(await f.text());
+    st.textContent = '波表已载入';
+    st.classList.add('ok');
+    setEnabled(true);
+    redraw();
+  }catch(err){
+    st.textContent = '解析失败：' + err.message;
+  }
+});
+
+/* ============ 启动 ============ */
+buildTabs();
+buildParams();
+syncAll();
+loadTable();
+</script>
+</body>
+</html>

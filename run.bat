@@ -1,0 +1,1 @@
+D:\anaconda\python.exe -m http.server 8000 --bind 127.0.0.1 --directory D:\code\fpga-synthesizer\test_web
